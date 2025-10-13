@@ -1,0 +1,46 @@
+{
+  "name": "bun-react-template",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --hot --console src/index.tsx",
+    "build": "bun build ./src/index.html --outdir=dist --sourcemap --splitting --target=browser --minify --define:process.env.NODE_ENV='\"production\"' --env='BUN_PUBLIC_*'",
+    "start": "NODE_ENV=production bun src/index.tsx",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint --cache .",
+    "lint:fix": "eslint --fix .",
+    "outdated": "bun update --interactive",
+    "unused": "knip"
+  },
+  "dependencies": {
+    "@react-spring/three": "^10.0.3",
+    "@react-three/drei": "^10.7.6",
+    "@react-three/fiber": "^9.3.0",
+    "clsx": "^2.1.1",
+    "jotai": "^2.15.0",
+    "mitt": "^3.0.1",
+    "p2-es": "^1.2.3",
+    "react": "^19",
+    "react-dom": "^19",
+    "tailwindcss": "^4",
+    "tailwind-merge": "^3.3.1",
+    "three": "^0.180.0",
+    "three-stdlib": "^2.36.0"
+  },
+  "devDependencies": {
+    "@ianvs/prettier-plugin-sort-imports": "^4.7.0",
+    "@nkzw/eslint-config": "^3.1.2",
+    "@react-three/eslint-plugin": "^0.1.2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/bun": "latest",
+    "bun-plugin-tailwind": "latest",
+    "eslint": "^9.37.0",
+    "knip": "^5.64.1",
+    "prettier": "^3.6.2",
+    "prettier-plugin-tailwindcss": "^0.6.14",
+    "typescript": "~5.9.3"
+  }
+}
