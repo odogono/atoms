@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable no-console */
 
-export type LogTypes =
+type LogTypes =
   | 'assert'
   | 'log'
   | 'debug'
@@ -30,14 +30,14 @@ const logTypes: LogTypes[] = [
 
 const ignorePrefixTypes = ['group', 'groupCollapsed', 'groupEnd', 'table'];
 
-export type LoggerBase = {
+type LoggerBase = {
   _isDisabled: LogTypes[];
   _prefix: string | null;
 };
 
-export type LogFn = (...args: any[]) => void;
+type LogFn = (...args: any[]) => void;
 
-export type Logger = Record<LogTypes, LogFn> & LoggerBase;
+type Logger = Record<LogTypes, LogFn> & LoggerBase;
 
 export const createLog = (
   prefix: string | null = null,

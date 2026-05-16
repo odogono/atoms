@@ -1,6 +1,9 @@
 import { resolve } from 'node:path';
 
-import { ReactThreeFiber } from '@react-three/fiber';
+import {
+  configs as reactThreeConfigs,
+  rules as reactThreeRules
+} from '@react-three/eslint-plugin';
 
 import nkzw from '@nkzw/eslint-config';
 
@@ -10,8 +13,11 @@ export default [
   },
   {
     plugins: {
-      '@react-three': ReactThreeFiber
-    }
+      '@react-three': {
+        rules: reactThreeRules
+      }
+    },
+    rules: reactThreeConfigs.recommended.rules
   },
   ...nkzw,
   {

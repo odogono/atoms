@@ -1,0 +1,8 @@
+<svg aria-hidden="true" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <rect fill="#111827" height="64" rx="14" width="64" />
+  <path
+    d="M20 42V22h13c6 0 11 4 11 10s-5 10-11 10H20Zm7-6h6c2.7 0 4.5-1.6 4.5-4S35.7 28 33 28h-6v8Z"
+    fill="#f9fafb"
+  />
+  <circle cx="46" cy="18" fill="#22c55e" r="6" />
+</svg>

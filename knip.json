@@ -1,0 +1,19 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": ["src/frontend.tsx"],
+  "project": ["src/**/*.{ts,tsx}", "scripts/**/*.ts"],
+  "ignore": [
+    "src/api/__test__/api.test.tsx",
+    "src/components/index.ts",
+    "src/hooks/index.ts",
+    "src/types.ts"
+  ],
+  "ignoreDependencies": [
+    "@react-spring/three",
+    "jotai",
+    "mitt",
+    "p2-es",
+    "tailwindcss",
+    "three-stdlib"
+  ]
+}
