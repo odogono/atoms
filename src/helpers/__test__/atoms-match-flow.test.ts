@@ -1,47 +1,19 @@
 import { describe, expect, it } from 'bun:test';
 
 import {
-  createGame,
-  getTile,
-  type GameState,
-  type PlayerId
-} from '../atoms-game';
-import {
   MATCH_TIMINGS,
-  createMatchState,
-  updateMatch,
-  type MatchEffect,
-  type MatchState
-} from '../atoms-match';
+  createMatchFlowState,
+  updateMatchFlow,
+  type MatchFlowEffect,
+  type MatchFlowState
+} from '../atoms-match-flow';
+import { createMatch, getTile } from '../atoms-match-rules';
+import { seedBoard, withPlayersHavingTakenTurns } from './atoms-test-fixtures';
 
-const withTiles = (
-  game: GameState,
-  tiles: Array<{
-    column: number;
-    count: number;
-    ownerId: PlayerId;
-    row: number;
-  }>
-) => {
-  const next: GameState = {
-    ...game,
-    tiles: game.tiles.map(tile => ({ ...tile }))
-  };
+const applyEffect = (state: MatchFlowState, effect: MatchFlowEffect) =>
+  updateMatchFlow(state, effect.event);
 
-  for (const tile of tiles) {
-    next.tiles[tile.row * game.columns + tile.column] = {
-      atomCount: tile.count,
-      ownerId: tile.ownerId
-    };
-  }
-
-  return next;
-};
-
-const applyEffect = (state: MatchState, effect: MatchEffect) =>
-  updateMatch(state, effect.event);
-
-const drainEffects = (state: MatchState, effects: MatchEffect[]) => {
+const drainEffects = (state: MatchFlowState, effects: MatchFlowEffect[]) => {
   let nextState = state;
   let nextEffects = effects;
 
@@ -56,15 +28,15 @@ const drainEffects = (state: MatchState, effects: MatchEffect[]) => {
 
 describe('atoms match flow', () => {
   it('plays a legal human move through its explosion wave playback', () => {
-    const initial = createMatchState({ mode: 'local', presetIndex: 0 });
-    const match: MatchState = {
+    const initial = createMatchFlowState({ mode: 'local', presetIndex: 0 });
+    const flow: MatchFlowState = {
       ...initial,
-      game: withTiles(initial.game, [
+      match: seedBoard(initial.match, [
         { column: 0, count: 1, ownerId: 'player-1', row: 0 }
       ])
     };
 
-    const started = updateMatch(match, {
+    const started = updateMatchFlow(flow, {
       position: { column: 0, row: 0 },
       type: 'attempt-move'
     });
@@ -73,7 +45,7 @@ describe('atoms match flow', () => {
     expect(started.state.currentWave?.sources).toEqual([
       { column: 0, ownerId: 'player-1', row: 0 }
     ]);
-    expect(getTile(started.state.game, { column: 0, row: 0 })).toEqual({
+    expect(getTile(started.state.match, { column: 0, row: 0 })).toEqual({
       atomCount: 2,
       ownerId: 'player-1'
     });
@@ -107,8 +79,8 @@ describe('atoms match flow', () => {
 
     expect(finished.state.isResolving).toBe(false);
     expect(finished.state.currentWave).toBe(null);
-    expect(finished.state.game.activePlayerId).toBe('player-2');
-    expect(getTile(finished.state.game, { column: 0, row: 0 })).toEqual({
+    expect(finished.state.match.activePlayerId).toBe('player-2');
+    expect(getTile(finished.state.match, { column: 0, row: 0 })).toEqual({
       atomCount: 0,
       ownerId: null
     });
@@ -116,21 +88,21 @@ describe('atoms match flow', () => {
   });
 
   it('flashes an illegal tile and ignores stale flash clearing after reset', () => {
-    const initial = createMatchState({ mode: 'local' });
-    const match: MatchState = {
+    const initial = createMatchFlowState({ mode: 'local' });
+    const flow: MatchFlowState = {
       ...initial,
-      game: withTiles(initial.game, [
+      match: seedBoard(initial.match, [
         { column: 1, count: 1, ownerId: 'player-2', row: 0 }
       ])
     };
 
-    const illegal = updateMatch(match, {
+    const illegal = updateMatchFlow(flow, {
       position: { column: 1, row: 0 },
       type: 'attempt-move'
     });
 
     expect(illegal.state.illegalTile).toEqual({ column: 1, row: 0 });
-    expect(illegal.state.game).toEqual(match.game);
+    expect(illegal.state.match).toEqual(flow.match);
     expect(illegal.effects).toEqual([
       {
         delayMs: MATCH_TIMINGS.illegalFlashMs,
@@ -141,24 +113,24 @@ describe('atoms match flow', () => {
       }
     ]);
 
-    const reset = updateMatch(illegal.state, { type: 'reset' });
+    const reset = updateMatchFlow(illegal.state, { type: 'reset' });
     const staleClear = applyEffect(reset.state, illegal.effects[0]!);
 
     expect(staleClear.state.illegalTile).toBe(null);
     expect(staleClear.state.runId).toBe(reset.state.runId);
-    expect(staleClear.state.game.turnNumber).toBe(0);
+    expect(staleClear.state.match.turnNumber).toBe(0);
   });
 
   it('schedules and executes NPC moves through the same match flow', () => {
-    const match = createMatchState({ mode: 'npc' });
+    const flow = createMatchFlowState({ mode: 'npc' });
 
-    const playerMove = updateMatch(match, {
+    const playerMove = updateMatchFlow(flow, {
       position: { column: 0, row: 0 },
       type: 'attempt-move'
     });
 
     expect(playerMove.state.isResolving).toBe(false);
-    expect(playerMove.state.game.activePlayerId).toBe('player-2');
+    expect(playerMove.state.match.activePlayerId).toBe('player-2');
     expect(playerMove.effects).toEqual([
       {
         delayMs: MATCH_TIMINGS.npcDelayMs,
@@ -171,62 +143,61 @@ describe('atoms match flow', () => {
 
     const npcMove = applyEffect(playerMove.state, playerMove.effects[0]!);
 
-    expect(npcMove.state.game.turnNumber).toBe(2);
-    expect(npcMove.state.game.activePlayerId).toBe('player-1');
+    expect(npcMove.state.match.turnNumber).toBe(2);
+    expect(npcMove.state.match.activePlayerId).toBe('player-1');
     expect(npcMove.state.isResolving).toBe(false);
   });
 
   it('ignores stale NPC work after a reset changes the run identity', () => {
-    const playerMove = updateMatch(createMatchState({ mode: 'npc' }), {
+    const playerMove = updateMatchFlow(createMatchFlowState({ mode: 'npc' }), {
       position: { column: 0, row: 0 },
       type: 'attempt-move'
     });
 
-    const reset = updateMatch(playerMove.state, { type: 'reset' });
+    const reset = updateMatchFlow(playerMove.state, { type: 'reset' });
     const staleNpc = applyEffect(reset.state, playerMove.effects[0]!);
 
     expect(staleNpc.state.runId).toBe(reset.state.runId);
-    expect(staleNpc.state.game.turnNumber).toBe(0);
+    expect(staleNpc.state.match.turnNumber).toBe(0);
     expect(staleNpc.effects).toEqual([]);
   });
 
   it('does not schedule NPC work after terminal Victory or Stalemate', () => {
-    const victoryStart = createMatchState({ mode: 'npc', presetIndex: 0 });
-    const victoryMatch: MatchState = {
+    const victoryStart = createMatchFlowState({ mode: 'npc', presetIndex: 0 });
+    const victoryFlow: MatchFlowState = {
       ...victoryStart,
-      game: {
-        ...withTiles(victoryStart.game, [
+      match: withPlayersHavingTakenTurns(
+        seedBoard(victoryStart.match, [
           { column: 0, count: 1, ownerId: 'player-1', row: 0 },
           { column: 1, count: 2, ownerId: 'player-2', row: 0 },
           { column: 0, count: 1, ownerId: 'player-1', row: 1 }
-        ]),
-        players: victoryStart.game.players.map(player => ({
-          ...player,
-          hasTakenTurn: true
-        }))
-      }
+        ])
+      )
     };
 
-    const victoryUpdate = updateMatch(victoryMatch, {
+    const victoryUpdate = updateMatchFlow(victoryFlow, {
       position: { column: 0, row: 0 },
       type: 'attempt-move'
     });
     const victory = drainEffects(victoryUpdate.state, victoryUpdate.effects);
 
-    expect(victory.game.status).toBe('won');
-    expect(victory.game.winnerId).toBe('player-1');
+    expect(victory.match.status).toBe('won');
+    expect(victory.match.winnerId).toBe('player-1');
 
-    const stalemateStart = createMatchState({ mode: 'npc', presetIndex: 0 });
-    const stalemateMatch: MatchState = {
+    const stalemateStart = createMatchFlowState({
+      mode: 'npc',
+      presetIndex: 0
+    });
+    const stalemateFlow: MatchFlowState = {
       ...stalemateStart,
-      game: withTiles(createGame({ columns: 2, rows: 2 }), [
+      match: seedBoard(createMatch({ columns: 2, rows: 2 }), [
         { column: 0, count: 1, ownerId: 'player-1', row: 0 },
         { column: 1, count: 1, ownerId: 'player-1', row: 0 },
         { column: 0, count: 1, ownerId: 'player-1', row: 1 },
         { column: 1, count: 1, ownerId: 'player-1', row: 1 }
       ])
     };
-    const stalemateUpdate = updateMatch(stalemateMatch, {
+    const stalemateUpdate = updateMatchFlow(stalemateFlow, {
       position: { column: 0, row: 0 },
       type: 'attempt-move'
     });
@@ -235,7 +206,7 @@ describe('atoms match flow', () => {
       stalemateUpdate.effects
     );
 
-    expect(stalemate.game.status).toBe('stalemate');
-    expect(stalemate.game.winnerId).toBe(null);
+    expect(stalemate.match.status).toBe('stalemate');
+    expect(stalemate.match.winnerId).toBe(null);
   });
 });

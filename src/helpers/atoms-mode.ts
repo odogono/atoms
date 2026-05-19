@@ -1,4 +1,4 @@
-import type { PlayerId } from './atoms-game';
+import type { PlayerId } from './atoms-match-rules';
 
 export type GameMode = 'local' | 'npc' | 'npc-vs-npc';
 

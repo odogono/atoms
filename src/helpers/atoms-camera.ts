@@ -1,4 +1,4 @@
-import type { BoardDimensions, Position } from './atoms-game';
+import type { BoardDimensions, Position } from './atoms-match-rules';
 
 export type CameraPose = {
   position: [number, number, number];

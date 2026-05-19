@@ -40,22 +40,22 @@ export type ExplosionWave = {
   sources: Array<Position & { ownerId: PlayerId }>;
 };
 
-export type GameStatus = 'playing' | 'stalemate' | 'won';
+export type MatchStatus = 'playing' | 'stalemate' | 'won';
 
-export type GameState = {
+export type MatchState = {
   activePlayerId: PlayerId;
   columns: number;
   players: Player[];
   rows: number;
-  status: GameStatus;
+  status: MatchStatus;
   tiles: Tile[];
   turnNumber: number;
   winnerId: PlayerId | null;
 };
 
-export type ApplyMoveResult = {
-  state: GameState;
-  timeline: GameState[];
+export type PlaceAtomResult = {
+  state: MatchState;
+  timeline: MatchState[];
   waves: ExplosionWave[];
 };
 
@@ -72,13 +72,13 @@ export const PLAYER_DEFINITIONS = [
   { color: '#ca8a04', id: 'player-4', name: 'Player 4' }
 ] as const satisfies Array<Pick<Player, 'color' | 'id' | 'name'>>;
 
-type CreateGameOptions = {
+type CreateMatchOptions = {
   columns?: number;
   playerCount?: number;
   rows?: number;
 };
 
-const assertPosition = (game: GameState, position: Position) => {
+const assertPosition = (game: MatchState, position: Position) => {
   if (
     position.row < 0 ||
     position.row >= game.rows ||
@@ -91,7 +91,7 @@ const assertPosition = (game: GameState, position: Position) => {
   }
 };
 
-const cloneGame = (game: GameState): GameState => ({
+const cloneGame = (game: MatchState): MatchState => ({
   ...game,
   players: game.players.map(player => ({ ...player })),
   tiles: game.tiles.map(tile => ({ ...tile }))
@@ -100,14 +100,14 @@ const cloneGame = (game: GameState): GameState => ({
 export const positionKey = (position: Position) =>
   `${position.row}:${position.column}`;
 
-const getTileIndex = (game: Pick<GameState, 'columns'>, position: Position) =>
+const getTileIndex = (game: Pick<MatchState, 'columns'>, position: Position) =>
   position.row * game.columns + position.column;
 
-export const createGame = ({
+export const createMatch = ({
   columns = 8,
   playerCount = 2,
   rows = 8
-}: CreateGameOptions = {}): GameState => {
+}: CreateMatchOptions = {}): MatchState => {
   if (playerCount < 2 || playerCount > 4) {
     throw new Error('Atoms supports between 2 and 4 players.');
   }
@@ -133,12 +133,12 @@ export const createGame = ({
   };
 };
 
-export const getTile = (game: GameState, position: Position) => {
+export const getTile = (game: MatchState, position: Position) => {
   assertPosition(game, position);
   return game.tiles[getTileIndex(game, position)]!;
 };
 
-export const getNeighbours = (game: GameState, position: Position) => {
+export const getNeighbours = (game: MatchState, position: Position) => {
   const candidates = [
     { column: position.column, row: position.row - 1 },
     { column: position.column + 1, row: position.row },
@@ -155,10 +155,10 @@ export const getNeighbours = (game: GameState, position: Position) => {
   );
 };
 
-export const getCapacity = (game: GameState, position: Position) =>
+export const getCapacity = (game: MatchState, position: Position) =>
   getNeighbours(game, position).length;
 
-export const isLegalMove = (game: GameState, position: Position) => {
+export const isLegalPlacement = (game: MatchState, position: Position) => {
   if (game.status !== 'playing') {
     return false;
   }
@@ -167,13 +167,13 @@ export const isLegalMove = (game: GameState, position: Position) => {
   return tile.ownerId === null || tile.ownerId === game.activePlayerId;
 };
 
-export const getLegalMoves = (game: GameState) => {
+export const getLegalPlacements = (game: MatchState) => {
   const moves: Position[] = [];
 
   for (let row = 0; row < game.rows; row += 1) {
     for (let column = 0; column < game.columns; column += 1) {
       const position = { column, row };
-      if (isLegalMove(game, position)) {
+      if (isLegalPlacement(game, position)) {
         moves.push(position);
       }
     }
@@ -182,7 +182,7 @@ export const getLegalMoves = (game: GameState) => {
   return moves;
 };
 
-const findCriticalSources = (game: GameState) => {
+const findCriticalSources = (game: MatchState) => {
   const sources: Array<Position & { ownerId: PlayerId }> = [];
 
   for (let row = 0; row < game.rows; row += 1) {
@@ -199,7 +199,7 @@ const findCriticalSources = (game: GameState) => {
 };
 
 const getCascadeSignature = (
-  game: GameState,
+  game: MatchState,
   sources: Array<Position & { ownerId: PlayerId }>
 ) =>
   [
@@ -212,7 +212,7 @@ const getCascadeSignature = (
   ].join(' -> ');
 
 const chooseIncomingOwner = (
-  game: GameState,
+  game: MatchState,
   activePlayerId: PlayerId,
   ownerIds: PlayerId[]
 ) => {
@@ -237,10 +237,10 @@ const chooseIncomingOwner = (
   })[0]!;
 };
 
-const playerOwnsAnyAtoms = (game: GameState, playerId: PlayerId) =>
+const playerOwnsAnyAtoms = (game: MatchState, playerId: PlayerId) =>
   game.tiles.some(tile => tile.ownerId === playerId && tile.atomCount > 0);
 
-const eliminatePlayersWithoutAtoms = (game: GameState) => {
+const eliminatePlayersWithoutAtoms = (game: MatchState) => {
   for (const player of game.players) {
     if (player.hasTakenTurn && !playerOwnsAnyAtoms(game, player.id)) {
       player.eliminated = true;
@@ -248,7 +248,7 @@ const eliminatePlayersWithoutAtoms = (game: GameState) => {
   }
 };
 
-const declareVictoryIfOnlyOnePlayerRemains = (game: GameState) => {
+const declareVictoryIfOnlyOnePlayerRemains = (game: MatchState) => {
   const remainingPlayers = game.players.filter(player => !player.eliminated);
   if (remainingPlayers.length !== 1) {
     return false;
@@ -259,16 +259,16 @@ const declareVictoryIfOnlyOnePlayerRemains = (game: GameState) => {
   return true;
 };
 
-const resolveEliminations = (game: GameState) => {
+const resolveEliminations = (game: MatchState) => {
   eliminatePlayersWithoutAtoms(game);
   return declareVictoryIfOnlyOnePlayerRemains(game);
 };
 
 const resolveCascades = (
-  game: GameState,
+  game: MatchState,
   activePlayerId: PlayerId
-): { stalemated: boolean; timeline: GameState[]; waves: ExplosionWave[] } => {
-  const timeline: GameState[] = [];
+): { stalemated: boolean; timeline: MatchState[]; waves: ExplosionWave[] } => {
+  const timeline: MatchState[] = [];
   const waves: ExplosionWave[] = [];
   const seenStates = new Set<string>();
   let sources = findCriticalSources(game);
@@ -334,7 +334,7 @@ const resolveCascades = (
   return { stalemated: false, timeline, waves };
 };
 
-const finishTurn = (game: GameState) => {
+const finishTurn = (game: MatchState) => {
   if (game.status !== 'playing') {
     return;
   }
@@ -357,12 +357,12 @@ const finishTurn = (game: GameState) => {
   }
 };
 
-export const applyMove = (
-  game: GameState,
+export const placeAtom = (
+  game: MatchState,
   position: Position
-): ApplyMoveResult => {
-  if (!isLegalMove(game, position)) {
-    throw new Error('Illegal move.');
+): PlaceAtomResult => {
+  if (!isLegalPlacement(game, position)) {
+    throw new Error('Illegal placement.');
   }
 
   const next = cloneGame(game);
@@ -384,58 +384,4 @@ export const applyMove = (
   timeline.push(...cascade.timeline, cloneGame(next));
 
   return { state: next, timeline, waves: cascade.waves };
-};
-
-const scoreMove = (
-  game: GameState,
-  position: Position,
-  beforeOwned: number,
-  beforeOpponentAtoms: number
-) => {
-  const result = applyMove(game, position);
-  if (result.state.status === 'stalemate') {
-    return -1_000_000 - position.row * 0.01 - position.column * 0.001;
-  }
-
-  const afterOwned = result.state.tiles.filter(
-    tile => tile.ownerId === game.activePlayerId
-  ).length;
-  const afterOpponentAtoms = result.state.tiles.filter(
-    tile => tile.ownerId && tile.ownerId !== game.activePlayerId
-  ).length;
-  const tile = getTile(game, position);
-  const capacity = getCapacity(game, position);
-  const createsExplosion = tile.atomCount + 1 >= capacity;
-
-  return (
-    (result.state.winnerId === game.activePlayerId ? 10_000 : 0) +
-    (beforeOpponentAtoms - afterOpponentAtoms) * 120 +
-    (afterOwned - beforeOwned) * 30 +
-    result.waves.length * 20 +
-    (createsExplosion ? 15 : 0) -
-    (capacity - tile.atomCount) * 2 -
-    position.row * 0.01 -
-    position.column * 0.001
-  );
-};
-
-export const chooseNpcMove = (game: GameState) => {
-  const legalMoves = getLegalMoves(game);
-  if (legalMoves.length === 0) {
-    return null;
-  }
-
-  const beforeOwned = game.tiles.filter(
-    tile => tile.ownerId === game.activePlayerId
-  ).length;
-  const beforeOpponentAtoms = game.tiles.filter(
-    tile => tile.ownerId && tile.ownerId !== game.activePlayerId
-  ).length;
-
-  return legalMoves
-    .map(move => ({
-      move,
-      score: scoreMove(game, move, beforeOwned, beforeOpponentAtoms)
-    }))
-    .sort((a, b) => b.score - a.score)[0]!.move;
 };

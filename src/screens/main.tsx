@@ -9,24 +9,24 @@ import { useTheme } from '@contexts/theme/context';
 import { getBoardCameraPose, getBoardPoint } from '@helpers/atoms-camera';
 import { type CursorDirection } from '@helpers/atoms-cursor';
 import {
+  MATCH_TIMINGS,
+  createMatchFlowState,
+  updateMatchFlow,
+  type MatchFlowEffect,
+  type MatchFlowEvent
+} from '@helpers/atoms-match-flow';
+import {
   BOARD_SIZE_PRESETS,
   getCapacity,
-  getLegalMoves,
+  getLegalPlacements,
   getTile,
   positionKey,
   type ExplosionPath,
   type ExplosionWave,
-  type GameState,
+  type MatchState,
   type PlayerId,
   type Position
-} from '@helpers/atoms-game';
-import {
-  MATCH_TIMINGS,
-  createMatchState,
-  updateMatch,
-  type MatchEffect,
-  type MatchEvent
-} from '@helpers/atoms-match';
+} from '@helpers/atoms-match-rules';
 import {
   GAME_MODES,
   getPlayerLabel,
@@ -58,8 +58,8 @@ const isInteractiveTarget = (target: EventTarget | null) => {
   );
 };
 
-const getWorldPosition = (game: GameState, position: Position, y = 0) =>
-  new Vector3(...getBoardPoint(game, position, y));
+const getWorldPosition = (match: MatchState, position: Position, y = 0) =>
+  new Vector3(...getBoardPoint(match, position, y));
 
 const ATOM_OFFSETS: Array<Array<readonly [number, number]>> = [
   [[0, 0]],
@@ -85,10 +85,10 @@ const getAtomOffsets = (atomCount: number): Array<readonly [number, number]> =>
 
 const CameraRig = ({
   focusedTile,
-  game
+  match
 }: {
   focusedTile: Position | null;
-  game: GameState;
+  match: MatchState;
 }) => {
   const { camera } = useThree();
   const desiredPosition = useRef(new Vector3());
@@ -97,8 +97,8 @@ const CameraRig = ({
 
   useEffect(() => {
     const pose = getBoardCameraPose({
-      columns: game.columns,
-      rows: game.rows
+      columns: match.columns,
+      rows: match.rows
     });
     desiredPosition.current.set(...pose.position);
     desiredTarget.current.set(...pose.target);
@@ -106,19 +106,19 @@ const CameraRig = ({
     lookTarget.current.copy(desiredTarget.current);
     camera.lookAt(lookTarget.current);
     camera.updateProjectionMatrix();
-  }, [camera, game.columns, game.rows]);
+  }, [camera, match.columns, match.rows]);
 
   useEffect(() => {
     const pose = getBoardCameraPose(
       {
-        columns: game.columns,
-        rows: game.rows
+        columns: match.columns,
+        rows: match.rows
       },
       focusedTile
     );
     desiredPosition.current.set(...pose.position);
     desiredTarget.current.set(...pose.target);
-  }, [focusedTile, game.columns, game.rows]);
+  }, [focusedTile, match.columns, match.rows]);
 
   useFrame(() => {
     camera.position.lerp(desiredPosition.current, 0.025);
@@ -130,23 +130,23 @@ const CameraRig = ({
 };
 
 const FlightAtom = ({
-  game,
+  match,
   path,
   playerColor
 }: {
-  game: GameState;
+  match: MatchState;
   path: ExplosionPath;
   playerColor: string;
 }) => {
   const meshRef = useRef<Mesh>(null);
   const startedAt = useRef<number | null>(null);
   const from = useMemo(
-    () => getWorldPosition(game, path.from, 0.42),
-    [game, path.from]
+    () => getWorldPosition(match, path.from, 0.42),
+    [match, path.from]
   );
   const to = useMemo(
-    () => getWorldPosition(game, path.to, 0.42),
-    [game, path.to]
+    () => getWorldPosition(match, path.to, 0.42),
+    [match, path.to]
   );
   const framePosition = useRef(new Vector3());
 
@@ -200,11 +200,11 @@ const AtomCluster = ({
 
 const BoardTile = ({
   activePlayerColor,
-  game,
   isCursor,
   isHovered,
   isIllegalFlash,
   isLegal,
+  match,
   onTileClick,
   onTileHover,
   playerColor,
@@ -212,19 +212,19 @@ const BoardTile = ({
   tile
 }: {
   activePlayerColor: string;
-  game: GameState;
   isCursor: boolean;
   isHovered: boolean;
   isIllegalFlash: boolean;
   isLegal: boolean;
+  match: MatchState;
   onTileClick: (position: Position) => void;
   onTileHover: (position: Position | null) => void;
   playerColor: string | null;
   position: Position;
   tile: ReturnType<typeof getTile>;
 }) => {
-  const worldPosition = getWorldPosition(game, position);
-  const capacity = getCapacity(game, position);
+  const worldPosition = getWorldPosition(match, position);
+  const capacity = getCapacity(match, position);
 
   const tileColor = isIllegalFlash
     ? '#f97316'
@@ -295,37 +295,37 @@ const BoardTile = ({
 const GameBoard = ({
   currentWave,
   cursorTile,
-  game,
   hoveredTile,
   illegalTile,
   isResolving,
+  match,
   onTileClick,
   onTileHover
 }: {
   currentWave: ExplosionWave | null;
   cursorTile: Position;
-  game: GameState;
   hoveredTile: Position | null;
   illegalTile: Position | null;
   isResolving: boolean;
+  match: MatchState;
   onTileClick: (position: Position) => void;
   onTileHover: (position: Position | null) => void;
 }) => {
   const playerColors = useMemo(
-    () => new Map(game.players.map(player => [player.id, player.color])),
-    [game.players]
+    () => new Map(match.players.map(player => [player.id, player.color])),
+    [match.players]
   );
   const legalTileKeys = useMemo(
-    () => new Set(getLegalMoves(game).map(positionKey)),
-    [game]
+    () => new Set(getLegalPlacements(match).map(positionKey)),
+    [match]
   );
-  const activePlayerColor = playerColors.get(game.activePlayerId) ?? '#2563eb';
-  const boardWidth = game.columns * TILE_SIZE;
-  const boardDepth = game.rows * TILE_SIZE;
+  const activePlayerColor = playerColors.get(match.activePlayerId) ?? '#2563eb';
+  const boardWidth = match.columns * TILE_SIZE;
+  const boardDepth = match.rows * TILE_SIZE;
 
   return (
     <>
-      <CameraRig focusedTile={hoveredTile ?? cursorTile} game={game} />
+      <CameraRig focusedTile={hoveredTile ?? cursorTile} match={match} />
       <ambientLight intensity={0.7} />
       <directionalLight castShadow intensity={1.15} position={[6, 10, 5]} />
       <group>
@@ -333,16 +333,15 @@ const GameBoard = ({
           <boxGeometry args={[boardWidth + 0.42, 0.08, boardDepth + 0.42]} />
           <meshStandardMaterial color="#475569" roughness={0.82} />
         </mesh>
-        {game.tiles.map((tile, index) => {
+        {match.tiles.map((tile, index) => {
           const position = {
-            column: index % game.columns,
-            row: Math.floor(index / game.columns)
+            column: index % match.columns,
+            row: Math.floor(index / match.columns)
           };
           const key = positionKey(position);
           return (
             <BoardTile
               activePlayerColor={activePlayerColor}
-              game={game}
               isCursor={positionKey(cursorTile) === key}
               isHovered={hoveredTile ? positionKey(hoveredTile) === key : false}
               isIllegalFlash={
@@ -350,6 +349,7 @@ const GameBoard = ({
               }
               isLegal={!isResolving && legalTileKeys.has(key)}
               key={key}
+              match={match}
               onTileClick={onTileClick}
               onTileHover={onTileHover}
               playerColor={
@@ -363,8 +363,8 @@ const GameBoard = ({
       </group>
       {currentWave?.paths.map((path, index) => (
         <FlightAtom
-          game={game}
           key={`${index}-${positionKey(path.from)}-${positionKey(path.to)}`}
+          match={match}
           path={path}
           playerColor={playerColors.get(path.ownerId) ?? '#2563eb'}
         />
@@ -402,15 +402,15 @@ const getStatusText = (
 };
 
 const PlayerPill = ({
-  game,
   label,
+  match,
   playerId
 }: {
-  game: GameState;
   label?: string;
+  match: MatchState;
   playerId: PlayerId;
 }) => {
-  const player = game.players.find(candidate => candidate.id === playerId)!;
+  const player = match.players.find(candidate => candidate.id === playerId)!;
 
   return (
     <span className="inline-flex items-center gap-2 rounded-md border border-slate-300/70 bg-white/80 px-2 py-1 text-xs font-medium text-slate-700 dark:border-slate-600 dark:bg-slate-900/75 dark:text-slate-200">
@@ -427,12 +427,12 @@ const PlayerPill = ({
 
 export const Main = () => {
   const { theme } = useTheme();
-  const [match, setMatch] = useState(() => createMatchState());
-  const matchRef = useRef(match);
-  const dispatchRef = useRef<(event: MatchEvent) => void>(() => undefined);
+  const [matchFlow, setMatchFlow] = useState(() => createMatchFlowState());
+  const matchFlowRef = useRef(matchFlow);
+  const dispatchRef = useRef<(event: MatchFlowEvent) => void>(() => undefined);
   const timeoutIdsRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
 
-  const scheduleEffects = useCallback((effects: MatchEffect[]) => {
+  const scheduleEffects = useCallback((effects: MatchFlowEffect[]) => {
     for (const effect of effects) {
       const timeoutId = setTimeout(() => {
         timeoutIdsRef.current = timeoutIdsRef.current.filter(
@@ -445,10 +445,10 @@ export const Main = () => {
   }, []);
 
   const dispatch = useCallback(
-    (event: MatchEvent) => {
-      const update = updateMatch(matchRef.current, event);
-      matchRef.current = update.state;
-      setMatch(update.state);
+    (event: MatchFlowEvent) => {
+      const update = updateMatchFlow(matchFlowRef.current, event);
+      matchFlowRef.current = update.state;
+      setMatchFlow(update.state);
       scheduleEffects(update.effects);
     },
     [scheduleEffects]
@@ -471,21 +471,21 @@ export const Main = () => {
   const {
     currentWave,
     cursorTile,
-    game,
     hoveredTile,
     illegalTile,
     isResolving,
+    match,
     mode
-  } = match;
-  const activePlayer = game.players.find(
-    player => player.id === game.activePlayerId
+  } = matchFlow;
+  const activePlayer = match.players.find(
+    player => player.id === match.activePlayerId
   )!;
-  const winner = game.winnerId
-    ? game.players.find(player => player.id === game.winnerId)
+  const winner = match.winnerId
+    ? match.players.find(player => player.id === match.winnerId)
     : null;
-  const isStalemate = game.status === 'stalemate';
+  const isStalemate = match.status === 'stalemate';
   const isNpcTurn =
-    isNpcControlled(mode, game.activePlayerId) && game.status === 'playing';
+    isNpcControlled(mode, match.activePlayerId) && match.status === 'playing';
 
   const resetGame = useCallback(() => {
     dispatch({ type: 'reset' });
@@ -520,7 +520,7 @@ export const Main = () => {
       if (event.code === 'Space' || event.key === ' ') {
         event.preventDefault();
         dispatch({
-          position: matchRef.current.cursorTile,
+          position: matchFlowRef.current.cursorTile,
           type: 'attempt-move'
         });
       }
@@ -592,7 +592,7 @@ export const Main = () => {
                       type: 'select-board-preset'
                     });
                   }}
-                  value={match.presetIndex}
+                  value={matchFlow.presetIndex}
                 >
                   {BOARD_SIZE_PRESETS.map((preset, index) => (
                     <option key={preset.label} value={index}>
@@ -619,13 +619,13 @@ export const Main = () => {
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <PlayerPill
-                    game={game}
                     label={getPlayerLabel(mode, 'player-1')}
+                    match={match}
                     playerId="player-1"
                   />
                   <PlayerPill
-                    game={game}
                     label={getPlayerLabel(mode, 'player-2')}
+                    match={match}
                     playerId="player-2"
                   />
                 </div>
@@ -674,10 +674,10 @@ export const Main = () => {
               <GameBoard
                 currentWave={currentWave}
                 cursorTile={cursorTile}
-                game={game}
                 hoveredTile={hoveredTile}
                 illegalTile={illegalTile}
                 isResolving={isResolving}
+                match={match}
                 onTileClick={handleTileClick}
                 onTileHover={handleTileHover}
               />

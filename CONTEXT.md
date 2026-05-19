@@ -16,6 +16,9 @@ A colored game piece on a tile, owned by exactly one player.
 **Player**:
 A participant that takes turns placing atoms and owns atoms by color.
 
+**NPC**:
+A Player whose placements are chosen by code.
+
 **Match**:
 One playable session of Atoms, from initial Board through Victory or Stalemate, including selected mode, Board size, turn flow, and Cascade playback.
 
@@ -55,6 +58,7 @@ _Avoid_: Crash, error, timeout
 
 - A **Board** contains many **Tiles**.
 - A **Match** contains one active **Board** and its participating **Players**.
+- An **NPC** is a **Player** controlled by the Match UI instead of a human.
 - A **Tile** contains zero or more **Atoms** owned by at most one **Player**.
 - A **Tile** reaches **Critical Mass** when its atom count equals or exceeds its **Capacity**.
 - An **Explosion Wave** may cause **Capture** and may start another **Explosion Wave**.

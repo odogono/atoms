@@ -5,17 +5,17 @@ import {
 } from './atoms-cursor';
 import {
   BOARD_SIZE_PRESETS,
-  applyMove,
-  chooseNpcMove,
-  createGame,
-  isLegalMove,
-  type ApplyMoveResult,
+  createMatch,
+  isLegalPlacement,
+  placeAtom,
   type BoardSizePreset,
   type ExplosionWave,
-  type GameState,
-  type Position
-} from './atoms-game';
+  type PlaceAtomResult,
+  type Position,
+  type MatchState as RuleMatchState
+} from './atoms-match-rules';
 import { getNextGameMode, isNpcControlled, type GameMode } from './atoms-mode';
+import { chooseNpcPlacement } from './atoms-npc-strategy';
 
 export const MATCH_TIMINGS = {
   illegalFlashMs: 280,
@@ -25,24 +25,24 @@ export const MATCH_TIMINGS = {
 } as const;
 
 type Playback = {
-  result: ApplyMoveResult;
+  result: PlaceAtomResult;
   runId: number;
 };
 
-export type MatchState = {
+export type MatchFlowState = {
   currentWave: ExplosionWave | null;
   cursorTile: Position;
-  game: GameState;
   hoveredTile: Position | null;
   illegalTile: Position | null;
   isResolving: boolean;
+  match: RuleMatchState;
   mode: GameMode;
   playback: Playback | null;
   presetIndex: number;
   runId: number;
 };
 
-export type MatchEvent =
+export type MatchFlowEvent =
   | { runId: number; type: 'advance-playback'; waveIndex: number }
   | { position: Position; type: 'attempt-move' }
   | { runId: number; type: 'clear-illegal-flash' }
@@ -55,14 +55,14 @@ export type MatchEvent =
   | { presetIndex: number; type: 'select-board-preset' }
   | { mode: GameMode; type: 'select-mode' };
 
-export type MatchEffect = {
+export type MatchFlowEffect = {
   delayMs: number;
-  event: MatchEvent;
+  event: MatchFlowEvent;
 };
 
-type MatchUpdate = {
-  effects: MatchEffect[];
-  state: MatchState;
+type MatchFlowUpdate = {
+  effects: MatchFlowEffect[];
+  state: MatchFlowState;
 };
 
 type CreateMatchOptions = {
@@ -73,19 +73,19 @@ type CreateMatchOptions = {
 const getPreset = (presetIndex: number): BoardSizePreset =>
   BOARD_SIZE_PRESETS[presetIndex] ?? BOARD_SIZE_PRESETS[1]!;
 
-const createGameForPreset = (preset: BoardSizePreset) =>
-  createGame({
+const createMatchForPreset = (preset: BoardSizePreset) =>
+  createMatch({
     columns: preset.columns,
     playerCount: 2,
     rows: preset.rows
   });
 
-const isNpcTurn = (state: MatchState) =>
-  state.game.status === 'playing' &&
+const isNpcTurn = (state: MatchFlowState) =>
+  state.match.status === 'playing' &&
   !state.isResolving &&
-  isNpcControlled(state.mode, state.game.activePlayerId);
+  isNpcControlled(state.mode, state.match.activePlayerId);
 
-const scheduleNpcMove = (state: MatchState): MatchEffect[] =>
+const scheduleNpcMove = (state: MatchFlowState): MatchFlowEffect[] =>
   isNpcTurn(state)
     ? [
         {
@@ -96,9 +96,9 @@ const scheduleNpcMove = (state: MatchState): MatchEffect[] =>
     : [];
 
 const scheduleWaveFinish = (
-  state: MatchState,
+  state: MatchFlowState,
   waveIndex: number
-): MatchEffect[] =>
+): MatchFlowEffect[] =>
   state.currentWave
     ? [
         {
@@ -109,20 +109,20 @@ const scheduleWaveFinish = (
     : [];
 
 const startGame = (
-  state: MatchState,
+  state: MatchFlowState,
   options: { mode?: GameMode; presetIndex?: number } = {}
 ) => {
   const presetIndex = options.presetIndex ?? state.presetIndex;
   const preset = getPreset(presetIndex);
 
-  const next: MatchState = {
+  const next: MatchFlowState = {
     ...state,
     currentWave: null,
     cursorTile: getInitialCursor(preset),
-    game: createGameForPreset(preset),
     hoveredTile: null,
     illegalTile: null,
     isResolving: false,
+    match: createMatchForPreset(preset),
     mode: options.mode ?? state.mode,
     playback: null,
     presetIndex,
@@ -135,12 +135,12 @@ const startGame = (
   };
 };
 
-const finishMove = (state: MatchState, result: ApplyMoveResult) => {
-  const next: MatchState = {
+const finishMove = (state: MatchFlowState, result: PlaceAtomResult) => {
+  const next: MatchFlowState = {
     ...state,
     currentWave: null,
-    game: result.state,
     isResolving: false,
+    match: result.state,
     playback: null
   };
 
@@ -151,18 +151,18 @@ const finishMove = (state: MatchState, result: ApplyMoveResult) => {
 };
 
 const startMovePlayback = (
-  state: MatchState,
-  result: ApplyMoveResult,
+  state: MatchFlowState,
+  result: PlaceAtomResult,
   runId: number
-): MatchUpdate => {
+): MatchFlowUpdate => {
   if (result.waves.length === 0) {
     return finishMove(
       {
         ...state,
         currentWave: null,
-        game: result.state,
         illegalTile: null,
         isResolving: false,
+        match: result.state,
         playback: null,
         runId
       },
@@ -170,12 +170,12 @@ const startMovePlayback = (
     );
   }
 
-  const next: MatchState = {
+  const next: MatchFlowState = {
     ...state,
     currentWave: result.waves[0]!,
-    game: result.timeline[0] ?? result.state,
     illegalTile: null,
     isResolving: true,
+    match: result.timeline[0] ?? result.state,
     playback: { result, runId },
     runId
   };
@@ -186,8 +186,11 @@ const startMovePlayback = (
   };
 };
 
-const attemptMove = (state: MatchState, position: Position): MatchUpdate => {
-  if (state.isResolving || state.game.status !== 'playing') {
+const attemptMove = (
+  state: MatchFlowState,
+  position: Position
+): MatchFlowUpdate => {
+  if (state.isResolving || state.match.status !== 'playing') {
     return { effects: [], state };
   }
 
@@ -197,7 +200,7 @@ const attemptMove = (state: MatchState, position: Position): MatchUpdate => {
 
   const positionedState = { ...state, cursorTile: position };
 
-  if (!isLegalMove(positionedState.game, position)) {
+  if (!isLegalPlacement(positionedState.match, position)) {
     const next = {
       ...positionedState,
       illegalTile: position,
@@ -217,29 +220,36 @@ const attemptMove = (state: MatchState, position: Position): MatchUpdate => {
 
   return startMovePlayback(
     positionedState,
-    applyMove(positionedState.game, position),
+    placeAtom(positionedState.match, position),
     positionedState.runId + 1
   );
 };
 
-const executeNpcMove = (state: MatchState, runId: number): MatchUpdate => {
+const executeNpcMove = (
+  state: MatchFlowState,
+  runId: number
+): MatchFlowUpdate => {
   if (runId !== state.runId || !isNpcTurn(state)) {
     return { effects: [], state };
   }
 
-  const move = chooseNpcMove(state.game);
+  const move = chooseNpcPlacement(state.match);
   if (!move) {
     return { effects: [], state };
   }
 
-  return startMovePlayback(state, applyMove(state.game, move), state.runId + 1);
+  return startMovePlayback(
+    state,
+    placeAtom(state.match, move),
+    state.runId + 1
+  );
 };
 
 const finishWave = (
-  state: MatchState,
+  state: MatchFlowState,
   runId: number,
   waveIndex: number
-): MatchUpdate => {
+): MatchFlowUpdate => {
   if (
     runId !== state.runId ||
     state.playback?.runId !== runId ||
@@ -251,7 +261,7 @@ const finishWave = (
   const next = {
     ...state,
     currentWave: null,
-    game: state.playback.result.timeline[waveIndex + 1] ?? state.game
+    match: state.playback.result.timeline[waveIndex + 1] ?? state.match
   };
 
   return {
@@ -266,10 +276,10 @@ const finishWave = (
 };
 
 const advancePlayback = (
-  state: MatchState,
+  state: MatchFlowState,
   runId: number,
   waveIndex: number
-): MatchUpdate => {
+): MatchFlowUpdate => {
   if (runId !== state.runId || state.playback?.runId !== runId) {
     return { effects: [], state };
   }
@@ -283,7 +293,7 @@ const advancePlayback = (
   const next = {
     ...state,
     currentWave: nextWave,
-    game: state.playback.result.timeline[nextWaveIndex] ?? state.game
+    match: state.playback.result.timeline[nextWaveIndex] ?? state.match
   };
 
   return {
@@ -292,19 +302,19 @@ const advancePlayback = (
   };
 };
 
-export const createMatchState = ({
+export const createMatchFlowState = ({
   mode = 'npc',
   presetIndex = 1
-}: CreateMatchOptions = {}): MatchState => {
+}: CreateMatchOptions = {}): MatchFlowState => {
   const preset = getPreset(presetIndex);
 
   return {
     currentWave: null,
     cursorTile: getInitialCursor(preset),
-    game: createGameForPreset(preset),
     hoveredTile: null,
     illegalTile: null,
     isResolving: false,
+    match: createMatchForPreset(preset),
     mode,
     playback: null,
     presetIndex,
@@ -312,10 +322,10 @@ export const createMatchState = ({
   };
 };
 
-export const updateMatch = (
-  state: MatchState,
-  event: MatchEvent
-): MatchUpdate => {
+export const updateMatchFlow = (
+  state: MatchFlowState,
+  event: MatchFlowEvent
+): MatchFlowUpdate => {
   switch (event.type) {
     case 'advance-playback':
       return advancePlayback(state, event.runId, event.waveIndex);
@@ -347,7 +357,7 @@ export const updateMatch = (
         state: {
           ...state,
           cursorTile: moveCursor(
-            { columns: state.game.columns, rows: state.game.rows },
+            { columns: state.match.columns, rows: state.match.rows },
             state.cursorTile,
             event.direction
           ),
