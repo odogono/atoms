@@ -27,6 +27,7 @@ export default [
       'arrow-parens': ['error', 'as-needed'],
       'arrow-spacing': ['error', { after: true, before: true }],
       'func-style': ['error', 'expression'],
+      'import-x/no-unresolved': ['error', { ignore: ['^bun:test$'] }],
       'no-var': 'error',
       'prefer-arrow-callback': 'error',
       'prefer-const': 'error',

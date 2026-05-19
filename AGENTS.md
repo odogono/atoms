@@ -46,3 +46,17 @@
 - Public env vars must be prefixed `BUN_PUBLIC_` (exposed to client). Never commit secrets.
 - Tailwind is enabled via Bun plugin (`bunfig.toml`); use utility classes and `tailwind-merge` where helpful.
 - Avoid heavy objects in React Three Fiber renders; use memoization and `useFrame` judiciously.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs are tracked in GitHub Issues using the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+This repo uses the default five-label triage vocabulary. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This repo uses a single-context domain documentation layout. See `docs/agents/domain.md`.
