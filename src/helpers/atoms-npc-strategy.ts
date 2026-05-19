@@ -13,10 +13,16 @@ const countCells = (cells: MatchState['cells'], activePlayerId: string) => {
   let opponentAtoms = 0;
   let neutralAtoms = 0;
   for (const cell of cells) {
-    if (isHole(cell)) continue;
-    if (cell.ownerId === activePlayerId) owned += 1;
-    else if (cell.ownerId) opponentAtoms += 1;
-    else if (cell.atomCount > 0) neutralAtoms += 1;
+    if (isHole(cell)) {
+      continue;
+    }
+    if (cell.ownerId === activePlayerId) {
+      owned += 1;
+    } else if (cell.ownerId) {
+      opponentAtoms += 1;
+    } else if (cell.atomCount > 0) {
+      neutralAtoms += 1;
+    }
   }
   return { neutralAtoms, opponentAtoms, owned };
 };

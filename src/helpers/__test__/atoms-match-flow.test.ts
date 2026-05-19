@@ -164,6 +164,27 @@ describe('atoms match flow', () => {
     expect(staleNpc.effects).toEqual([]);
   });
 
+  it('starts a new match with selected setup in one flow update', () => {
+    const playerMove = updateMatchFlow(createMatchFlowState({ mode: 'npc' }), {
+      position: { column: 0, row: 0 },
+      type: 'attempt-move'
+    });
+
+    const started = updateMatchFlow(playerMove.state, {
+      mode: 'local',
+      presetIndex: 0,
+      type: 'start-match'
+    });
+    const staleNpc = applyEffect(started.state, playerMove.effects[0]!);
+
+    expect(started.state.mode).toBe('local');
+    expect(started.state.presetIndex).toBe(0);
+    expect(started.state.match.rows).toBe(6);
+    expect(started.state.match.turnNumber).toBe(0);
+    expect(staleNpc.state).toEqual(started.state);
+    expect(staleNpc.effects).toEqual([]);
+  });
+
   it('does not schedule NPC work after terminal Victory or Stalemate', () => {
     const victoryStart = createMatchFlowState({ mode: 'npc', presetIndex: 0 });
     const victoryFlow: MatchFlowState = {

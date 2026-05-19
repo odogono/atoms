@@ -31,6 +31,9 @@ A Player whose placements are chosen by code.
 **Match**:
 One playable session of Atoms, from initial Board through Victory or Stalemate, including selected mode, Board size, turn flow, and Cascade playback.
 
+**Round**:
+A completed cycle of turns by the Match's non-eliminated Players.
+
 **Capacity**:
 The number of orthogonal playable tile neighbours a tile has.
 _Avoid_: Limit, threshold
@@ -63,6 +66,14 @@ _Avoid_: Win condition, game over
 A terminal draw state where a Cascade repeats while multiple non-eliminated players remain.
 _Avoid_: Crash, error, timeout
 
+**Board Control**:
+A measure of how many Tiles each Player owns on the Board.
+_Avoid_: Colour balance
+
+**Critical Pressure**:
+A measure of how close each Player's owned Tiles are to Critical Mass.
+_Avoid_: Dominance, threat level
+
 ## Relationships
 
 - A **Board** contains many **Cells**.
@@ -79,6 +90,8 @@ _Avoid_: Crash, error, timeout
 - A **Cascade** may resolve to a stable **Board**, **Victory**, or **Stalemate**.
 - **Victory** is checked after each **Explosion Wave** and after a stable **Board**.
 - **Stalemate** is checked only when a repeating **Cascade** still has multiple non-eliminated **Players**.
+- A **Round** contains one turn by each non-eliminated **Player**.
+- **Board Control** and **Critical Pressure** describe Player-owned **Tiles** only; **Neutral Atoms** do not contribute to either measure.
 
 ## Example dialogue
 

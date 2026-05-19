@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.0]
+
+### Added
+
+- Added modal-based New Match setup and a confirmed Abandon Match flow.
+- Added Rounds completed, Board Control, and Critical Pressure HUD indicators.
+- Added player panels with active-player emphasis and clearer Match status/action controls.
+- Added glossary language for Round, Board Control, and Critical Pressure.
+
+### Changed
+
+- Moved mode and Board selection out of always-visible controls so setup changes only apply when starting a Match.
+- Improved responsive Match layout so the board remains usable on mobile.
+
 ## [0.3.0]
 
 ### Added

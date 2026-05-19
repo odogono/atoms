@@ -296,7 +296,8 @@ const parseBoard = (
 
 const hasCriticalTile = (match: MatchState) =>
   getPlayablePositions(match).some(
-    position => getTile(match, position).atomCount >= getCapacity(match, position)
+    position =>
+      getTile(match, position).atomCount >= getCapacity(match, position)
   );
 
 export const parseMatchSnapshot = (input: unknown): ParseSnapshotResult => {

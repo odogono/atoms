@@ -53,7 +53,8 @@ export type MatchFlowEvent =
   | { position: Position | null; type: 'hover-tile' }
   | { type: 'reset' }
   | { presetIndex: number; type: 'select-board-preset' }
-  | { mode: GameMode; type: 'select-mode' };
+  | { mode: GameMode; type: 'select-mode' }
+  | { mode: GameMode; presetIndex: number; type: 'start-match' };
 
 export type MatchFlowEffect = {
   delayMs: number;
@@ -371,5 +372,10 @@ export const updateMatchFlow = (
       return startGame(state, { presetIndex: event.presetIndex });
     case 'select-mode':
       return startGame(state, { mode: event.mode });
+    case 'start-match':
+      return startGame(state, {
+        mode: event.mode,
+        presetIndex: event.presetIndex
+      });
   }
 };

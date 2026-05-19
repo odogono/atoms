@@ -130,6 +130,14 @@ export const positionKey = (position: Position) =>
 const getCellIndex = (game: Pick<MatchState, 'columns'>, position: Position) =>
   position.row * game.columns + position.column;
 
+export const indexToPosition = (
+  game: Pick<MatchState, 'columns'>,
+  index: number
+): Position => ({
+  column: index % game.columns,
+  row: Math.floor(index / game.columns)
+});
+
 const createEmptyTile = (): Tile => ({
   atomCount: 0,
   kind: 'tile',
