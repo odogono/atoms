@@ -9,7 +9,11 @@ import {
   isLegalPlacement,
   placeAtom
 } from '../atoms-match-rules';
-import { seedBoard, withPlayersHavingTakenTurns } from './atoms-test-fixtures';
+import {
+  seedBoard,
+  seedHoles,
+  withPlayersHavingTakenTurns
+} from './atoms-test-fixtures';
 
 describe('atoms match rules', () => {
   it('uses neighbour count as tile capacity', () => {
@@ -18,6 +22,59 @@ describe('atoms match rules', () => {
     expect(getCapacity(match, { column: 0, row: 0 })).toBe(2);
     expect(getCapacity(match, { column: 1, row: 0 })).toBe(3);
     expect(getCapacity(match, { column: 1, row: 1 })).toBe(4);
+  });
+
+  it('treats holes as absent board space for capacity and placement', () => {
+    const match = seedHoles(createMatch({ columns: 3, rows: 3 }), [
+      { column: 1, row: 1 }
+    ]);
+
+    expect(getCapacity(match, { column: 1, row: 0 })).toBe(2);
+    expect(getCapacity(match, { column: 1, row: 1 })).toBe(0);
+    expect(isLegalPlacement(match, { column: 1, row: 1 })).toBe(false);
+    expect(getLegalPlacements(match)).not.toContainEqual({ column: 1, row: 1 });
+  });
+
+  it('does not emit atoms into holes during a cascade', () => {
+    const match = seedBoard(
+      seedHoles(createMatch({ columns: 3, rows: 3 }), [{ column: 1, row: 1 }]),
+      [{ column: 1, count: 1, ownerId: 'player-1', row: 0 }]
+    );
+
+    const result = placeAtom(match, { column: 1, row: 0 });
+
+    expect(result.waves[0]?.paths).toEqual([
+      {
+        from: { column: 1, row: 0 },
+        ownerId: 'player-1',
+        to: { column: 2, row: 0 }
+      },
+      {
+        from: { column: 1, row: 0 },
+        ownerId: 'player-1',
+        to: { column: 0, row: 0 }
+      }
+    ]);
+    expect(getTile(result.state, { column: 1, row: 0 })).toEqual({
+      atomCount: 0,
+      kind: 'tile',
+      ownerId: null
+    });
+  });
+
+  it('rejects hole layouts that leave a tile with capacity below two', () => {
+    expect(() =>
+      createMatch({
+        columns: 3,
+        holes: [
+          { column: 0, row: 1 },
+          { column: 1, row: 0 },
+          { column: 1, row: 2 },
+          { column: 2, row: 1 }
+        ],
+        rows: 3
+      })
+    ).toThrow('capacity');
   });
 
   it('allows placement on empty or owned tiles and rejects opponent tiles', () => {
@@ -31,6 +88,72 @@ describe('atoms match rules', () => {
     expect(isLegalPlacement(match, { column: 1, row: 0 })).toBe(false);
   });
 
+  it('treats neutral atom tiles as occupied but not player-placeable', () => {
+    const match = createMatch({
+      columns: 3,
+      neutralAtoms: [{ column: 1, count: 1, row: 0 }],
+      rows: 3
+    });
+
+    expect(getTile(match, { column: 1, row: 0 })).toEqual({
+      atomCount: 1,
+      kind: 'tile',
+      ownerId: null
+    });
+    expect(isLegalPlacement(match, { column: 1, row: 0 })).toBe(false);
+    expect(getLegalPlacements(match)).not.toContainEqual({
+      column: 1,
+      row: 0
+    });
+  });
+
+  it('converts neutral atoms to the incoming owner during an explosion', () => {
+    const match = seedBoard(
+      createMatch({
+        columns: 3,
+        neutralAtoms: [{ column: 1, count: 1, row: 0 }],
+        rows: 3
+      }),
+      [{ column: 0, count: 1, ownerId: 'player-1', row: 0 }]
+    );
+
+    const result = placeAtom(match, { column: 0, row: 0 });
+
+    expect(getTile(result.state, { column: 1, row: 0 })).toEqual({
+      atomCount: 2,
+      kind: 'tile',
+      ownerId: 'player-1'
+    });
+  });
+
+  it('lets captured neutral atoms explode in the next wave', () => {
+    const match = seedBoard(
+      createMatch({
+        columns: 3,
+        neutralAtoms: [{ column: 1, count: 2, row: 0 }],
+        rows: 3
+      }),
+      [{ column: 0, count: 1, ownerId: 'player-1', row: 0 }]
+    );
+
+    const result = placeAtom(match, { column: 0, row: 0 });
+
+    expect(result.waves).toHaveLength(2);
+    expect(result.waves[1]?.sources).toEqual([
+      { column: 1, ownerId: 'player-1', row: 0 }
+    ]);
+  });
+
+  it('rejects critical neutral atoms in initial board setup', () => {
+    expect(() =>
+      createMatch({
+        columns: 3,
+        neutralAtoms: [{ column: 0, count: 2, row: 0 }],
+        rows: 3
+      })
+    ).toThrow('Neutral Atom');
+  });
+
   it('converts and increments a captured destination during an explosion', () => {
     const match = seedBoard(createMatch({ columns: 3, rows: 3 }), [
       { column: 0, count: 1, ownerId: 'player-1', row: 0 },
@@ -42,6 +165,7 @@ describe('atoms match rules', () => {
     expect(result.waves).toHaveLength(1);
     expect(getTile(result.state, { column: 1, row: 0 })).toEqual({
       atomCount: 2,
+      kind: 'tile',
       ownerId: 'player-1'
     });
   });
@@ -57,10 +181,12 @@ describe('atoms match rules', () => {
     expect(result.waves).toHaveLength(2);
     expect(getTile(result.state, { column: 0, row: 0 })).toEqual({
       atomCount: 1,
+      kind: 'tile',
       ownerId: 'player-1'
     });
     expect(getTile(result.state, { column: 1, row: 0 })).toEqual({
       atomCount: 0,
+      kind: 'tile',
       ownerId: null
     });
   });
@@ -139,6 +265,33 @@ describe('atoms match rules', () => {
     expect(result.state.status).toBe('playing');
   });
 
+  it('ignores neutral atoms for Victory and Elimination', () => {
+    const afterPlayerTwoHasPlayed = withPlayersHavingTakenTurns(
+      seedBoard(
+        createMatch({
+          columns: 3,
+          neutralAtoms: [{ column: 2, count: 1, row: 2 }],
+          rows: 3
+        }),
+        [
+          { column: 0, count: 1, ownerId: 'player-1', row: 0 },
+          { column: 1, count: 2, ownerId: 'player-2', row: 0 },
+          { column: 0, count: 1, ownerId: 'player-1', row: 1 }
+        ]
+      )
+    );
+
+    const result = placeAtom(afterPlayerTwoHasPlayed, { column: 0, row: 0 });
+
+    expect(result.state.status).toBe('won');
+    expect(result.state.winnerId).toBe('player-1');
+    expect(getTile(result.state, { column: 2, row: 2 })).toEqual({
+      atomCount: 1,
+      kind: 'tile',
+      ownerId: null
+    });
+  });
+
   it('keeps the engine generic for up to four players', () => {
     const match = createMatch({ columns: 6, playerCount: 4, rows: 6 });
 
@@ -150,7 +303,18 @@ describe('atoms match rules', () => {
     expect(BOARD_SIZE_PRESETS).toEqual([
       { columns: 6, label: 'Small', rows: 6 },
       { columns: 8, label: 'Standard', rows: 8 },
-      { columns: 10, label: 'Large', rows: 10 }
+      { columns: 10, label: 'Large', rows: 10 },
+      {
+        columns: 8,
+        label: 'Neutral',
+        neutralAtoms: [
+          { column: 3, count: 1, row: 2 },
+          { column: 2, count: 1, row: 3 },
+          { column: 5, count: 1, row: 4 },
+          { column: 4, count: 1, row: 5 }
+        ],
+        rows: 8
+      }
     ]);
   });
 });

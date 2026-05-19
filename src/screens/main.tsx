@@ -19,13 +19,14 @@ import {
   BOARD_SIZE_PRESETS,
   getCapacity,
   getLegalPlacements,
-  getTile,
+  isHole,
   positionKey,
   type ExplosionPath,
   type ExplosionWave,
   type MatchState,
   type PlayerId,
-  type Position
+  type Position,
+  type Tile
 } from '@helpers/atoms-match-rules';
 import {
   GAME_MODES,
@@ -37,6 +38,7 @@ import { cn } from '@helpers/tailwind';
 
 const TILE_SIZE = 1;
 const ATOM_RADIUS = 0.13;
+const NEUTRAL_ATOM_COLOR = '#f8fafc';
 
 const ignoreRaycast = () => undefined;
 
@@ -221,7 +223,7 @@ const BoardTile = ({
   onTileHover: (position: Position | null) => void;
   playerColor: string | null;
   position: Position;
-  tile: ReturnType<typeof getTile>;
+  tile: Tile;
 }) => {
   const worldPosition = getWorldPosition(match, position);
   const capacity = getCapacity(match, position);
@@ -322,6 +324,9 @@ const GameBoard = ({
   const activePlayerColor = playerColors.get(match.activePlayerId) ?? '#2563eb';
   const boardWidth = match.columns * TILE_SIZE;
   const boardDepth = match.rows * TILE_SIZE;
+  const cursorKey = positionKey(cursorTile);
+  const hoveredKey = hoveredTile ? positionKey(hoveredTile) : null;
+  const illegalKey = illegalTile ? positionKey(illegalTile) : null;
 
   return (
     <>
@@ -333,30 +338,36 @@ const GameBoard = ({
           <boxGeometry args={[boardWidth + 0.42, 0.08, boardDepth + 0.42]} />
           <meshStandardMaterial color="#475569" roughness={0.82} />
         </mesh>
-        {match.tiles.map((tile, index) => {
+        {match.cells.map((cell, index) => {
           const position = {
             column: index % match.columns,
             row: Math.floor(index / match.columns)
           };
           const key = positionKey(position);
+          if (isHole(cell)) {
+            return null;
+          }
+
           return (
             <BoardTile
               activePlayerColor={activePlayerColor}
-              isCursor={positionKey(cursorTile) === key}
-              isHovered={hoveredTile ? positionKey(hoveredTile) === key : false}
-              isIllegalFlash={
-                illegalTile ? positionKey(illegalTile) === key : false
-              }
+              isCursor={cursorKey === key}
+              isHovered={hoveredKey === key}
+              isIllegalFlash={illegalKey === key}
               isLegal={!isResolving && legalTileKeys.has(key)}
               key={key}
               match={match}
               onTileClick={onTileClick}
               onTileHover={onTileHover}
               playerColor={
-                tile.ownerId ? (playerColors.get(tile.ownerId) ?? null) : null
+                cell.ownerId
+                  ? (playerColors.get(cell.ownerId) ?? null)
+                  : cell.atomCount > 0
+                    ? NEUTRAL_ATOM_COLOR
+                    : null
               }
               position={position}
-              tile={tile}
+              tile={cell}
             />
           );
         })}

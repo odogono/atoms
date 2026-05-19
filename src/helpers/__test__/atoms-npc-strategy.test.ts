@@ -39,4 +39,24 @@ describe('atoms NPC strategy', () => {
     expect(move).not.toBe(null);
     expect(placeAtom(npcTurnMatch, move!).state.status).not.toBe('stalemate');
   });
+
+  it('does not place on neutral atoms and values capturing them', () => {
+    const npcTurnMatch = {
+      ...seedBoard(
+        createMatch({
+          columns: 3,
+          neutralAtoms: [{ column: 1, count: 2, row: 0 }],
+          rows: 3
+        }),
+        [
+          { column: 0, count: 1, ownerId: 'player-2', row: 0 },
+          { column: 2, count: 1, ownerId: 'player-2', row: 2 }
+        ]
+      ),
+      activePlayerId: 'player-2' as const
+    };
+
+    expect(isLegalPlacement(npcTurnMatch, { column: 1, row: 0 })).toBe(false);
+    expect(chooseNpcPlacement(npcTurnMatch)).toEqual({ column: 0, row: 0 });
+  });
 });

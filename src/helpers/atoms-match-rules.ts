@@ -10,9 +10,14 @@ export type BoardDimensions = {
   rows: number;
 };
 
+export type NeutralAtomSetup = Position & {
+  count: number;
+};
+
 export type BoardSizePreset = {
   columns: number;
   label: string;
+  neutralAtoms?: readonly NeutralAtomSetup[];
   rows: number;
 };
 
@@ -26,8 +31,15 @@ export type Player = {
 
 export type Tile = {
   atomCount: number;
+  kind: 'tile';
   ownerId: PlayerId | null;
 };
+
+export type Hole = {
+  kind: 'hole';
+};
+
+export type BoardCell = Hole | Tile;
 
 export type ExplosionPath = {
   from: Position;
@@ -44,11 +56,11 @@ export type MatchStatus = 'playing' | 'stalemate' | 'won';
 
 export type MatchState = {
   activePlayerId: PlayerId;
+  cells: BoardCell[];
   columns: number;
   players: Player[];
   rows: number;
   status: MatchStatus;
-  tiles: Tile[];
   turnNumber: number;
   winnerId: PlayerId | null;
 };
@@ -62,7 +74,18 @@ export type PlaceAtomResult = {
 export const BOARD_SIZE_PRESETS = [
   { columns: 6, label: 'Small', rows: 6 },
   { columns: 8, label: 'Standard', rows: 8 },
-  { columns: 10, label: 'Large', rows: 10 }
+  { columns: 10, label: 'Large', rows: 10 },
+  {
+    columns: 8,
+    label: 'Neutral',
+    neutralAtoms: [
+      { column: 3, count: 1, row: 2 },
+      { column: 2, count: 1, row: 3 },
+      { column: 5, count: 1, row: 4 },
+      { column: 4, count: 1, row: 5 }
+    ],
+    rows: 8
+  }
 ] as const satisfies BoardSizePreset[];
 
 export const PLAYER_DEFINITIONS = [
@@ -74,9 +97,13 @@ export const PLAYER_DEFINITIONS = [
 
 type CreateMatchOptions = {
   columns?: number;
+  holes?: Position[];
+  neutralAtoms?: readonly NeutralAtomSetup[];
   playerCount?: number;
   rows?: number;
 };
+
+export const isHole = (cell: BoardCell): cell is Hole => cell.kind === 'hole';
 
 const assertPosition = (game: MatchState, position: Position) => {
   if (
@@ -93,18 +120,120 @@ const assertPosition = (game: MatchState, position: Position) => {
 
 const cloneGame = (game: MatchState): MatchState => ({
   ...game,
-  players: game.players.map(player => ({ ...player })),
-  tiles: game.tiles.map(tile => ({ ...tile }))
+  cells: game.cells.map(cell => ({ ...cell })),
+  players: game.players.map(player => ({ ...player }))
 });
 
 export const positionKey = (position: Position) =>
   `${position.row}:${position.column}`;
 
-const getTileIndex = (game: Pick<MatchState, 'columns'>, position: Position) =>
+const getCellIndex = (game: Pick<MatchState, 'columns'>, position: Position) =>
   position.row * game.columns + position.column;
+
+const createEmptyTile = (): Tile => ({
+  atomCount: 0,
+  kind: 'tile',
+  ownerId: null
+});
+
+export const getCell = (game: MatchState, position: Position) => {
+  assertPosition(game, position);
+  return game.cells[getCellIndex(game, position)]!;
+};
+
+export const getTile = (game: MatchState, position: Position) => {
+  const cell = getCell(game, position);
+  if (isHole(cell)) {
+    throw new Error(`Position is a hole: ${position.row},${position.column}`);
+  }
+  return cell;
+};
+
+export const getPlayablePositions = (game: MatchState) => {
+  const positions: Position[] = [];
+
+  for (let row = 0; row < game.rows; row += 1) {
+    for (let column = 0; column < game.columns; column += 1) {
+      const position = { column, row };
+      if (!isHole(getCell(game, position))) {
+        positions.push(position);
+      }
+    }
+  }
+
+  return positions;
+};
+
+export const getNeighbours = (game: MatchState, position: Position) => {
+  const candidates = [
+    { column: position.column, row: position.row - 1 },
+    { column: position.column + 1, row: position.row },
+    { column: position.column, row: position.row + 1 },
+    { column: position.column - 1, row: position.row }
+  ];
+
+  return candidates.filter(candidate => {
+    if (
+      candidate.row < 0 ||
+      candidate.row >= game.rows ||
+      candidate.column < 0 ||
+      candidate.column >= game.columns
+    ) {
+      return false;
+    }
+
+    return !isHole(getCell(game, candidate));
+  });
+};
+
+export const getCapacity = (game: MatchState, position: Position) => {
+  if (isHole(getCell(game, position))) {
+    return 0;
+  }
+  return getNeighbours(game, position).length;
+};
+
+export const validateBoardTopology = (game: MatchState) => {
+  if (game.cells.length !== game.rows * game.columns) {
+    throw new Error('Board cell count does not match dimensions.');
+  }
+
+  for (const position of getPlayablePositions(game)) {
+    const capacity = getNeighbours(game, position).length;
+    if (capacity < 2) {
+      throw new Error(
+        `Tile at ${position.row},${position.column} has capacity ${capacity}; holes must leave every tile with capacity at least 2.`
+      );
+    }
+  }
+};
+
+const validateNeutralAtom = (
+  game: MatchState,
+  neutralAtom: NeutralAtomSetup
+) => {
+  if (!Number.isInteger(neutralAtom.count) || neutralAtom.count < 1) {
+    throw new Error('Neutral Atom count must be a positive integer.');
+  }
+
+  const tile = getTile(game, neutralAtom);
+  if (tile.atomCount > 0 || tile.ownerId) {
+    throw new Error(
+      `Neutral Atom at ${neutralAtom.row},${neutralAtom.column} overlaps another atom.`
+    );
+  }
+
+  if (neutralAtom.count >= getCapacity(game, neutralAtom)) {
+    throw new Error(
+      `Neutral Atom at ${neutralAtom.row},${neutralAtom.column} must be below Capacity.`
+    );
+  }
+};
 
 export const createMatch = ({
   columns = 8,
+  holes = [],
+  neutralAtoms = [],
   playerCount = 2,
   rows = 8
 }: CreateMatchOptions = {}): MatchState => {
@@ -117,65 +246,60 @@ export const createMatch = ({
     eliminated: false,
     hasTakenTurn: false
   }));
+  const cells: BoardCell[] = Array.from(
+    { length: rows * columns },
+    createEmptyTile
+  );
 
-  return {
+  const match: MatchState = {
     activePlayerId: players[0]!.id,
+    cells,
     columns,
     players,
     rows,
     status: 'playing',
-    tiles: Array.from({ length: rows * columns }, () => ({
-      atomCount: 0,
-      ownerId: null
-    })),
     turnNumber: 0,
     winnerId: null
   };
+
+  for (const hole of holes) {
+    assertPosition(match, hole);
+    match.cells[getCellIndex(match, hole)] = { kind: 'hole' };
+  }
+
+  validateBoardTopology(match);
+
+  for (const neutralAtom of neutralAtoms) {
+    assertPosition(match, neutralAtom);
+    validateNeutralAtom(match, neutralAtom);
+    getTile(match, neutralAtom).atomCount = neutralAtom.count;
+  }
+
+  return match;
 };
-
-export const getTile = (game: MatchState, position: Position) => {
-  assertPosition(game, position);
-  return game.tiles[getTileIndex(game, position)]!;
-};
-
-export const getNeighbours = (game: MatchState, position: Position) => {
-  const candidates = [
-    { column: position.column, row: position.row - 1 },
-    { column: position.column + 1, row: position.row },
-    { column: position.column, row: position.row + 1 },
-    { column: position.column - 1, row: position.row }
-  ];
-
-  return candidates.filter(
-    candidate =>
-      candidate.row >= 0 &&
-      candidate.row < game.rows &&
-      candidate.column >= 0 &&
-      candidate.column < game.columns
-  );
-};
-
-export const getCapacity = (game: MatchState, position: Position) =>
-  getNeighbours(game, position).length;
 
 export const isLegalPlacement = (game: MatchState, position: Position) => {
   if (game.status !== 'playing') {
     return false;
   }
 
-  const tile = getTile(game, position);
-  return tile.ownerId === null || tile.ownerId === game.activePlayerId;
+  const cell = getCell(game, position);
+  if (isHole(cell)) {
+    return false;
+  }
+
+  return (
+    (cell.ownerId === null && cell.atomCount === 0) ||
+    cell.ownerId === game.activePlayerId
+  );
 };
 
 export const getLegalPlacements = (game: MatchState) => {
   const moves: Position[] = [];
 
-  for (let row = 0; row < game.rows; row += 1) {
-    for (let column = 0; column < game.columns; column += 1) {
-      const position = { column, row };
-      if (isLegalPlacement(game, position)) {
-        moves.push(position);
-      }
+  for (const position of getPlayablePositions(game)) {
+    if (isLegalPlacement(game, position)) {
+      moves.push(position);
     }
   }
 
@@ -185,13 +309,10 @@ export const getLegalPlacements = (game: MatchState) => {
 const findCriticalSources = (game: MatchState) => {
   const sources: Array<Position & { ownerId: PlayerId }> = [];
 
-  for (let row = 0; row < game.rows; row += 1) {
-    for (let column = 0; column < game.columns; column += 1) {
-      const position = { column, row };
-      const tile = getTile(game, position);
-      if (tile.ownerId && tile.atomCount >= getCapacity(game, position)) {
-        sources.push({ ...position, ownerId: tile.ownerId });
-      }
+  for (const position of getPlayablePositions(game)) {
+    const tile = getTile(game, position);
+    if (tile.ownerId && tile.atomCount >= getCapacity(game, position)) {
+      sources.push({ ...position, ownerId: tile.ownerId });
     }
   }
 
@@ -203,8 +324,10 @@ const getCascadeSignature = (
   sources: Array<Position & { ownerId: PlayerId }>
 ) =>
   [
-    game.tiles
-      .map(tile => `${tile.ownerId ?? 'none'}:${tile.atomCount}`)
+    game.cells
+      .map(cell =>
+        isHole(cell) ? 'hole' : `${cell.ownerId ?? 'none'}:${cell.atomCount}`
+      )
       .join('|'),
     sources
       .map(source => `${source.row}:${source.column}:${source.ownerId}`)
@@ -238,7 +361,9 @@ const chooseIncomingOwner = (
 };
 
 const playerOwnsAnyAtoms = (game: MatchState, playerId: PlayerId) =>
-  game.tiles.some(tile => tile.ownerId === playerId && tile.atomCount > 0);
+  game.cells.some(
+    cell => !isHole(cell) && cell.ownerId === playerId && cell.atomCount > 0
+  );
 
 const eliminatePlayersWithoutAtoms = (game: MatchState) => {
   for (const player of game.players) {
@@ -291,10 +416,7 @@ const resolveCascades = (
     );
 
     for (const source of sources) {
-      game.tiles[getTileIndex(game, source)] = {
-        atomCount: 0,
-        ownerId: null
-      };
+      game.cells[getCellIndex(game, source)] = createEmptyTile();
     }
 
     const incomingByTile = new Map<string, ExplosionPath[]>();

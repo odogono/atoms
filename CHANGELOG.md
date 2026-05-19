@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.0]
+
+### Added
+
+- Added versioned Match snapshot serialization with human-editable ASCII Board rows.
+- Added Hole cells as absent Board space that affects Capacity, legal placements, Cascade paths, NPC placement, and rendering.
+- Documented Cell and Hole domain language plus the versioned snapshot contract with ADR-0003.
+
+### Changed
+
+- Replaced runtime Board storage with Cell-based state so playable Tiles and Holes are represented explicitly.
+
 ## [0.2.0]
 
 ### Changed
