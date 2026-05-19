@@ -40,7 +40,7 @@ export type ExplosionWave = {
   sources: Array<Position & { ownerId: PlayerId }>;
 };
 
-export type GameStatus = 'playing' | 'won';
+export type GameStatus = 'playing' | 'stalemate' | 'won';
 
 export type GameState = {
   activePlayerId: PlayerId;
@@ -198,6 +198,19 @@ const findCriticalSources = (game: GameState) => {
   return sources;
 };
 
+const getCascadeSignature = (
+  game: GameState,
+  sources: Array<Position & { ownerId: PlayerId }>
+) =>
+  [
+    game.tiles
+      .map(tile => `${tile.ownerId ?? 'none'}:${tile.atomCount}`)
+      .join('|'),
+    sources
+      .map(source => `${source.row}:${source.column}:${source.ownerId}`)
+      .join('|')
+  ].join(' -> ');
+
 const chooseIncomingOwner = (
   game: GameState,
   activePlayerId: PlayerId,
@@ -224,15 +237,51 @@ const chooseIncomingOwner = (
   })[0]!;
 };
 
+const playerOwnsAnyAtoms = (game: GameState, playerId: PlayerId) =>
+  game.tiles.some(tile => tile.ownerId === playerId && tile.atomCount > 0);
+
+const eliminatePlayersWithoutAtoms = (game: GameState) => {
+  for (const player of game.players) {
+    if (player.hasTakenTurn && !playerOwnsAnyAtoms(game, player.id)) {
+      player.eliminated = true;
+    }
+  }
+};
+
+const declareVictoryIfOnlyOnePlayerRemains = (game: GameState) => {
+  const remainingPlayers = game.players.filter(player => !player.eliminated);
+  if (remainingPlayers.length !== 1) {
+    return false;
+  }
+
+  game.status = 'won';
+  game.winnerId = remainingPlayers[0]!.id;
+  return true;
+};
+
+const resolveEliminations = (game: GameState) => {
+  eliminatePlayersWithoutAtoms(game);
+  return declareVictoryIfOnlyOnePlayerRemains(game);
+};
+
 const resolveCascades = (
   game: GameState,
   activePlayerId: PlayerId
-): { timeline: GameState[]; waves: ExplosionWave[] } => {
+): { stalemated: boolean; timeline: GameState[]; waves: ExplosionWave[] } => {
   const timeline: GameState[] = [];
   const waves: ExplosionWave[] = [];
+  const seenStates = new Set<string>();
   let sources = findCriticalSources(game);
 
   while (sources.length > 0) {
+    const signature = getCascadeSignature(game, sources);
+    if (seenStates.has(signature)) {
+      game.status = 'stalemate';
+      game.winnerId = null;
+      return { stalemated: true, timeline, waves };
+    }
+    seenStates.add(signature);
+
     const paths = sources.flatMap(source =>
       getNeighbours(game, source).map(to => ({
         from: { column: source.column, row: source.row },
@@ -273,27 +322,24 @@ const resolveCascades = (
     }
 
     waves.push({ paths, sources });
+    if (resolveEliminations(game)) {
+      timeline.push(cloneGame(game));
+      return { stalemated: false, timeline, waves };
+    }
+
     timeline.push(cloneGame(game));
     sources = findCriticalSources(game);
   }
 
-  return { timeline, waves };
+  return { stalemated: false, timeline, waves };
 };
 
-const playerOwnsAnyAtoms = (game: GameState, playerId: PlayerId) =>
-  game.tiles.some(tile => tile.ownerId === playerId && tile.atomCount > 0);
-
 const finishTurn = (game: GameState) => {
-  for (const player of game.players) {
-    if (player.hasTakenTurn && !playerOwnsAnyAtoms(game, player.id)) {
-      player.eliminated = true;
-    }
+  if (game.status !== 'playing') {
+    return;
   }
 
-  const remainingPlayers = game.players.filter(player => !player.eliminated);
-  if (remainingPlayers.length === 1) {
-    game.status = 'won';
-    game.winnerId = remainingPlayers[0]!.id;
+  if (resolveEliminations(game)) {
     return;
   }
 
@@ -332,7 +378,9 @@ export const applyMove = (
 
   const timeline = [cloneGame(next)];
   const cascade = resolveCascades(next, activePlayer.id);
-  finishTurn(next);
+  if (!cascade.stalemated) {
+    finishTurn(next);
+  }
   timeline.push(...cascade.timeline, cloneGame(next));
 
   return { state: next, timeline, waves: cascade.waves };
@@ -345,6 +393,10 @@ const scoreMove = (
   beforeOpponentAtoms: number
 ) => {
   const result = applyMove(game, position);
+  if (result.state.status === 'stalemate') {
+    return -1_000_000 - position.row * 0.01 - position.column * 0.001;
+  }
+
   const afterOwned = result.state.tiles.filter(
     tile => tile.ownerId === game.activePlayerId
   ).length;

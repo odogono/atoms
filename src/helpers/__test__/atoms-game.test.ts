@@ -91,7 +91,7 @@ describe('atoms game rules', () => {
     });
   });
 
-  it('resolves multi-wave cascades and checks victory after the cascade', () => {
+  it('ends a cascade as victory after a wave eliminates the opponent', () => {
     const game = withTiles(createGame({ columns: 3, rows: 3 }), [
       { column: 0, count: 1, ownerId: 'player-1', row: 0 },
       { column: 1, count: 2, ownerId: 'player-2', row: 0 },
@@ -107,12 +107,59 @@ describe('atoms game rules', () => {
 
     const result = applyMove(afterPlayerTwoHasPlayed, { column: 0, row: 0 });
 
-    expect(result.waves.length).toBeGreaterThan(1);
+    expect(result.waves).toHaveLength(1);
     expect(
       result.state.players.find(player => player.id === 'player-2')
     ).toMatchObject({ eliminated: true });
     expect(result.state.status).toBe('won');
     expect(result.state.winnerId).toBe('player-1');
+  });
+
+  it('ends as a stalemate when a cascade repeats with multiple remaining players', () => {
+    const game = withTiles(createGame({ columns: 2, rows: 2 }), [
+      { column: 0, count: 1, ownerId: 'player-1', row: 0 },
+      { column: 1, count: 1, ownerId: 'player-1', row: 0 },
+      { column: 0, count: 1, ownerId: 'player-1', row: 1 },
+      { column: 1, count: 1, ownerId: 'player-1', row: 1 }
+    ]);
+
+    const result = applyMove(game, { column: 0, row: 0 });
+
+    expect(result.state.status).toBe('stalemate');
+    expect(result.state.winnerId).toBe(null);
+    expect(
+      result.state.players.find(player => player.id === 'player-2')
+    ).toMatchObject({ eliminated: false, hasTakenTurn: false });
+    expect(result.waves.length).toBeLessThan(10);
+  });
+
+  it('ends a repeating cascade as victory when one eligible player owns no atoms', () => {
+    const game = withTiles(createGame({ columns: 2, rows: 2 }), [
+      { column: 0, count: 1, ownerId: 'player-2', row: 0 },
+      { column: 1, count: 1, ownerId: 'player-2', row: 0 },
+      { column: 0, count: 1, ownerId: 'player-2', row: 1 },
+      { column: 1, count: 1, ownerId: 'player-2', row: 1 }
+    ]);
+    const afterBothPlayersHavePlayed: GameState = {
+      ...game,
+      activePlayerId: 'player-2',
+      players: game.players.map(player => ({
+        ...player,
+        hasTakenTurn: true
+      }))
+    };
+
+    const result = applyMove(afterBothPlayersHavePlayed, {
+      column: 0,
+      row: 0
+    });
+
+    expect(result.state.status).toBe('won');
+    expect(result.state.winnerId).toBe('player-2');
+    expect(
+      result.state.players.find(player => player.id === 'player-1')
+    ).toMatchObject({ eliminated: true });
+    expect(result.waves).toHaveLength(1);
   });
 
   it('does not eliminate players before they have taken a turn', () => {
@@ -158,5 +205,26 @@ describe('atoms game rules', () => {
 
     expect(chooseNpcMove(npcTurnGame)).toEqual({ column: 0, row: 1 });
     expect(isLegalMove(npcTurnGame, chooseNpcMove(npcTurnGame)!)).toBe(true);
+  });
+
+  it('avoids a stalemate move when a non-stalemate move is available', () => {
+    const game = withTiles(createGame({ columns: 3, rows: 3 }), [
+      { column: 0, count: 1, ownerId: 'player-1', row: 0 },
+      { column: 1, count: 2, ownerId: 'player-1', row: 0 },
+      { column: 2, count: 1, ownerId: 'player-1', row: 0 },
+      { column: 0, count: 2, ownerId: 'player-2', row: 1 },
+      { column: 1, count: 1, ownerId: 'player-1', row: 1 },
+      { column: 2, count: 2, ownerId: 'player-1', row: 1 },
+      { column: 0, count: 1, ownerId: 'player-1', row: 2 },
+      { column: 2, count: 1, ownerId: 'player-1', row: 2 }
+    ]);
+    const npcTurnGame: GameState = {
+      ...game,
+      activePlayerId: 'player-1'
+    };
+    const move = chooseNpcMove(npcTurnGame);
+
+    expect(move).not.toBe(null);
+    expect(applyMove(npcTurnGame, move!).state.status).not.toBe('stalemate');
   });
 });

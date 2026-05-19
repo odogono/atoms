@@ -7,20 +7,12 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { ThemeTogglePortal } from '@components/theme/toggle-portal';
 import { useTheme } from '@contexts/theme/context';
 import { getBoardCameraPose, getBoardPoint } from '@helpers/atoms-camera';
-import {
-  getInitialCursor,
-  moveCursor,
-  type CursorDirection
-} from '@helpers/atoms-cursor';
+import { type CursorDirection } from '@helpers/atoms-cursor';
 import {
   BOARD_SIZE_PRESETS,
-  applyMove,
-  chooseNpcMove,
-  createGame,
   getCapacity,
   getLegalMoves,
   getTile,
-  isLegalMove,
   positionKey,
   type ExplosionPath,
   type ExplosionWave,
@@ -29,25 +21,24 @@ import {
   type Position
 } from '@helpers/atoms-game';
 import {
+  MATCH_TIMINGS,
+  createMatchState,
+  updateMatch,
+  type MatchEffect,
+  type MatchEvent
+} from '@helpers/atoms-match';
+import {
   GAME_MODES,
-  getNextGameMode,
   getPlayerLabel,
   isNpcControlled,
   type GameMode
 } from '@helpers/atoms-mode';
 import { cn } from '@helpers/tailwind';
 
-const WAVE_DURATION_MS = 560;
-const NPC_DELAY_MS = 600;
 const TILE_SIZE = 1;
 const ATOM_RADIUS = 0.13;
 
 const ignoreRaycast = () => undefined;
-
-const delay = (milliseconds: number) =>
-  new Promise(resolve => {
-    setTimeout(resolve, milliseconds);
-  });
 
 const isCursorDirection = (key: string): key is CursorDirection =>
   key === 'ArrowUp' ||
@@ -162,7 +153,10 @@ const FlightAtom = ({
   useFrame(({ clock }) => {
     startedAt.current ??= clock.elapsedTime;
     const elapsed = clock.elapsedTime - startedAt.current;
-    const progress = Math.min(elapsed / (WAVE_DURATION_MS / 1000), 1);
+    const progress = Math.min(
+      elapsed / (MATCH_TIMINGS.waveDurationMs / 1000),
+      1
+    );
     const eased = 1 - (1 - progress) ** 3;
     const position = framePosition.current.copy(from).lerp(to, eased);
     position.y += Math.sin(progress * Math.PI) * 0.55;
@@ -207,9 +201,9 @@ const AtomCluster = ({
 const BoardTile = ({
   activePlayerColor,
   game,
-  isIllegalFlash,
   isCursor,
   isHovered,
+  isIllegalFlash,
   isLegal,
   onTileClick,
   onTileHover,
@@ -219,9 +213,9 @@ const BoardTile = ({
 }: {
   activePlayerColor: string;
   game: GameState;
-  isIllegalFlash: boolean;
   isCursor: boolean;
   isHovered: boolean;
+  isIllegalFlash: boolean;
   isLegal: boolean;
   onTileClick: (position: Position) => void;
   onTileHover: (position: Position | null) => void;
@@ -241,9 +235,18 @@ const BoardTile = ({
         : isLegal
           ? '#dbeafe'
           : '#e5e7eb';
-  const tileEmissive =
-    isHovered ? '#facc15' : isCursor || isLegal ? activePlayerColor : '#000000';
-  const tileEmissiveIntensity = isHovered ? 0.2 : isCursor ? 0.22 : isLegal ? 0.08 : 0;
+  const tileEmissive = isHovered
+    ? '#facc15'
+    : isCursor || isLegal
+      ? activePlayerColor
+      : '#000000';
+  const tileEmissiveIntensity = isHovered
+    ? 0.2
+    : isCursor
+      ? 0.22
+      : isLegal
+        ? 0.08
+        : 0;
 
   return (
     <>
@@ -340,9 +343,11 @@ const GameBoard = ({
             <BoardTile
               activePlayerColor={activePlayerColor}
               game={game}
-              isIllegalFlash={illegalTile ? positionKey(illegalTile) === key : false}
               isCursor={positionKey(cursorTile) === key}
               isHovered={hoveredTile ? positionKey(hoveredTile) === key : false}
+              isIllegalFlash={
+                illegalTile ? positionKey(illegalTile) === key : false
+              }
               isLegal={!isResolving && legalTileKeys.has(key)}
               key={key}
               onTileClick={onTileClick}
@@ -371,6 +376,7 @@ const GameBoard = ({
 const getStatusText = (
   mode: GameMode,
   winnerId: PlayerId | undefined,
+  isStalemate: boolean,
   isResolving: boolean,
   currentWave: ExplosionWave | null,
   isNpcTurn: boolean,
@@ -378,6 +384,9 @@ const getStatusText = (
 ): string => {
   if (winnerId) {
     return `${getPlayerLabel(mode, winnerId)} wins`;
+  }
+  if (isStalemate) {
+    return 'Stalemate: cascade cannot stabilize';
   }
   if (isResolving) {
     if (currentWave) {
@@ -418,129 +427,83 @@ const PlayerPill = ({
 
 export const Main = () => {
   const { theme } = useTheme();
-  const [mode, setMode] = useState<GameMode>('npc');
-  const [presetIndex, setPresetIndex] = useState(1);
-  const [game, setGame] = useState(() => createGame());
-  const [isResolving, setIsResolving] = useState(false);
-  const [currentWave, setCurrentWave] = useState<ExplosionWave | null>(null);
-  const [cursorTile, setCursorTile] = useState(() =>
-    getInitialCursor(BOARD_SIZE_PRESETS[1]!)
-  );
-  const [hoveredTile, setHoveredTile] = useState<Position | null>(null);
-  const [illegalTile, setIllegalTile] = useState<Position | null>(null);
-  const runIdRef = useRef(0);
+  const [match, setMatch] = useState(() => createMatchState());
+  const matchRef = useRef(match);
+  const dispatchRef = useRef<(event: MatchEvent) => void>(() => undefined);
+  const timeoutIdsRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
 
-  const selectedPreset = BOARD_SIZE_PRESETS[presetIndex]!;
+  const scheduleEffects = useCallback((effects: MatchEffect[]) => {
+    for (const effect of effects) {
+      const timeoutId = setTimeout(() => {
+        timeoutIdsRef.current = timeoutIdsRef.current.filter(
+          candidate => candidate !== timeoutId
+        );
+        dispatchRef.current(effect.event);
+      }, effect.delayMs);
+      timeoutIdsRef.current.push(timeoutId);
+    }
+  }, []);
+
+  const dispatch = useCallback(
+    (event: MatchEvent) => {
+      const update = updateMatch(matchRef.current, event);
+      matchRef.current = update.state;
+      setMatch(update.state);
+      scheduleEffects(update.effects);
+    },
+    [scheduleEffects]
+  );
+
+  useEffect(() => {
+    dispatchRef.current = dispatch;
+  }, [dispatch]);
+
+  useEffect(
+    () => () => {
+      for (const timeoutId of timeoutIdsRef.current) {
+        clearTimeout(timeoutId);
+      }
+      timeoutIdsRef.current = [];
+    },
+    []
+  );
+
+  const {
+    currentWave,
+    cursorTile,
+    game,
+    hoveredTile,
+    illegalTile,
+    isResolving,
+    mode
+  } = match;
   const activePlayer = game.players.find(
     player => player.id === game.activePlayerId
   )!;
   const winner = game.winnerId
     ? game.players.find(player => player.id === game.winnerId)
     : null;
+  const isStalemate = game.status === 'stalemate';
   const isNpcTurn =
     isNpcControlled(mode, game.activePlayerId) && game.status === 'playing';
 
-  const startGame = useCallback(
-    (preset: (typeof BOARD_SIZE_PRESETS)[number]) => {
-      runIdRef.current += 1;
-      setCurrentWave(null);
-      setCursorTile(getInitialCursor(preset));
-      setHoveredTile(null);
-      setIllegalTile(null);
-      setIsResolving(false);
-      setGame(
-        createGame({
-          columns: preset.columns,
-          playerCount: 2,
-          rows: preset.rows
-        })
-      );
-    },
-    []
-  );
-
   const resetGame = useCallback(() => {
-    startGame(selectedPreset);
-  }, [selectedPreset, startGame]);
-
-  const playMove = useCallback(
-    async (position: Position) => {
-      if (isResolving || game.status !== 'playing') {
-        return;
-      }
-
-      if (!isLegalMove(game, position)) {
-        setIllegalTile(position);
-        setTimeout(() => {
-          setIllegalTile(null);
-        }, 280);
-        return;
-      }
-
-      const runId = runIdRef.current + 1;
-      runIdRef.current = runId;
-      const result = applyMove(game, position);
-      setIsResolving(true);
-      setIllegalTile(null);
-
-      setGame(result.timeline[0] ?? result.state);
-      for (let index = 0; index < result.waves.length; index += 1) {
-        if (runIdRef.current !== runId) {
-          return;
-        }
-        setCurrentWave(result.waves[index]!);
-        await delay(WAVE_DURATION_MS);
-        if (runIdRef.current !== runId) {
-          return;
-        }
-        setCurrentWave(null);
-        setGame(result.timeline[index + 1] ?? result.state);
-        await delay(80);
-      }
-
-      if (runIdRef.current !== runId) {
-        return;
-      }
-      setGame(result.state);
-      setIsResolving(false);
-    },
-    [game, isResolving]
-  );
-
-  useEffect(() => {
-    if (!isNpcTurn || isResolving) {
-      return;
-    }
-
-    const timeoutId = setTimeout(() => {
-      const move = chooseNpcMove(game);
-      if (move) {
-        void playMove(move);
-      }
-    }, NPC_DELAY_MS);
-
-    return () => {
-      clearTimeout(timeoutId);
-    };
-  }, [game, isNpcTurn, isResolving, playMove]);
+    dispatch({ type: 'reset' });
+  }, [dispatch]);
 
   const handleTileClick = useCallback(
     (position: Position) => {
-      if (isNpcTurn) {
-        return;
-      }
-      setCursorTile(position);
-      void playMove(position);
+      dispatch({ position, type: 'attempt-move' });
     },
-    [isNpcTurn, playMove]
+    [dispatch]
   );
 
-  const handleTileHover = useCallback((position: Position | null) => {
-    setHoveredTile(position);
-    if (position) {
-      setCursorTile(position);
-    }
-  }, []);
+  const handleTileHover = useCallback(
+    (position: Position | null) => {
+      dispatch({ position, type: 'hover-tile' });
+    },
+    [dispatch]
+  );
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -549,27 +512,17 @@ export const Main = () => {
       }
 
       if (isCursorDirection(event.key)) {
-        const direction = event.key;
         event.preventDefault();
-        setHoveredTile(null);
-        setCursorTile(position =>
-          moveCursor(
-            {
-              columns: game.columns,
-              rows: game.rows
-            },
-            position,
-            direction
-          )
-        );
+        dispatch({ direction: event.key, type: 'move-cursor' });
         return;
       }
 
       if (event.code === 'Space' || event.key === ' ') {
         event.preventDefault();
-        if (!isNpcTurn) {
-          void playMove(cursorTile);
-        }
+        dispatch({
+          position: matchRef.current.cursorTile,
+          type: 'attempt-move'
+        });
       }
     };
 
@@ -577,7 +530,7 @@ export const Main = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [cursorTile, game.columns, game.rows, isNpcTurn, playMove]);
+  }, [dispatch]);
 
   return (
     <>
@@ -610,8 +563,10 @@ export const Main = () => {
                   disabled={isResolving}
                   id="mode"
                   onChange={event => {
-                    setMode(event.target.value as GameMode);
-                    startGame(selectedPreset);
+                    dispatch({
+                      mode: event.target.value as GameMode,
+                      type: 'select-mode'
+                    });
                   }}
                   value={mode}
                 >
@@ -632,11 +587,12 @@ export const Main = () => {
                   disabled={isResolving}
                   id="board-size"
                   onChange={event => {
-                    const nextPresetIndex = Number(event.target.value);
-                    setPresetIndex(nextPresetIndex);
-                    startGame(BOARD_SIZE_PRESETS[nextPresetIndex]!);
+                    dispatch({
+                      presetIndex: Number(event.target.value),
+                      type: 'select-board-preset'
+                    });
                   }}
-                  value={presetIndex}
+                  value={match.presetIndex}
                 >
                   {BOARD_SIZE_PRESETS.map((preset, index) => (
                     <option key={preset.label} value={index}>
@@ -654,6 +610,7 @@ export const Main = () => {
                   {getStatusText(
                     mode,
                     winner?.id,
+                    isStalemate,
                     isResolving,
                     currentWave,
                     isNpcTurn,
@@ -681,14 +638,13 @@ export const Main = () => {
                   onClick={resetGame}
                   type="button"
                 >
-                  {winner ? 'Rematch' : 'Reset'}
+                  {winner || isStalemate ? 'Rematch' : 'Reset'}
                 </button>
                 <button
                   className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                   disabled={isResolving}
                   onClick={() => {
-                    setMode(previous => getNextGameMode(previous));
-                    startGame(selectedPreset);
+                    dispatch({ type: 'cycle-mode' });
                   }}
                   type="button"
                 >
@@ -701,7 +657,7 @@ export const Main = () => {
           <section
             className="min-h-0 overflow-hidden rounded-lg border border-slate-300 bg-slate-200 dark:border-slate-800 dark:bg-slate-900"
             onPointerLeave={() => {
-              setHoveredTile(null);
+              dispatch({ position: null, type: 'hover-tile' });
             }}
           >
             <Canvas
