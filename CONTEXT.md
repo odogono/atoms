@@ -28,6 +28,9 @@ A participant that takes turns placing atoms and owns atoms by color.
 **NPC**:
 A Player whose placements are chosen by code.
 
+**NPC Strategy**:
+The policy an NPC uses to choose one legal placement on its turn.
+
 **Match**:
 One playable session of Atoms, from initial Board through Victory or Stalemate, including selected mode, Board size, turn flow, and Cascade playback.
 
@@ -90,6 +93,7 @@ _Avoid_: Dominance, threat level
 - A **Match Snapshot** represents one **Match** at a specific point in turn flow.
 - A **Board Setup** describes the starting **Board** for a **Match**.
 - An **NPC** is a **Player** controlled by the Match UI instead of a human.
+- An **NPC Strategy** belongs to an **NPC** turn and chooses one legal placement.
 - A **Tile** contains zero or more **Atoms** owned by at most one **Player**, or Neutral Atoms.
 - A **Hole** contains no **Atoms** and has no owner.
 - A **Neutral Atom** is not a **Player** and never takes a turn.

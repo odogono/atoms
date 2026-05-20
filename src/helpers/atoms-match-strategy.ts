@@ -1,21 +1,41 @@
 import { type MatchState, type Position } from './atoms-match-rules';
-import { chooseNpcPlacement } from './atoms-npc-strategy';
+import {
+  chooseBaselineNpcPlacement,
+  chooseTacticalNpcPlacement
+} from './atoms-npc-strategy';
 
-type MatchStrategyId = 'heuristic';
+type MatchStrategyId =
+  | 'baseline'
+  | 'first-legal'
+  | 'heuristic'
+  | 'tactical'
+  | string;
 
 export type MatchStrategy = {
   choosePlacement: (match: MatchState) => Position | null;
   id: MatchStrategyId;
 };
 
-export const heuristicMatchStrategy: MatchStrategy = {
-  choosePlacement: chooseNpcPlacement,
-  id: 'heuristic'
+export const baselineMatchStrategy: MatchStrategy = {
+  choosePlacement: chooseBaselineNpcPlacement,
+  id: 'baseline'
 };
 
+export const heuristicMatchStrategy = baselineMatchStrategy;
+
+export const tacticalMatchStrategy: MatchStrategy = {
+  choosePlacement: chooseTacticalNpcPlacement,
+  id: 'tactical'
+};
+
+export const defaultNpcMatchStrategy = tacticalMatchStrategy;
+
 const MATCH_STRATEGIES = [
-  heuristicMatchStrategy
+  baselineMatchStrategy,
+  tacticalMatchStrategy
 ] as const satisfies readonly MatchStrategy[];
 
 export const getMatchStrategy = (id: string): MatchStrategy | null =>
-  MATCH_STRATEGIES.find(strategy => strategy.id === id) ?? null;
+  id === 'heuristic'
+    ? baselineMatchStrategy
+    : (MATCH_STRATEGIES.find(strategy => strategy.id === id) ?? null);

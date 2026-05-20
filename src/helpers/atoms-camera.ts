@@ -5,6 +5,11 @@ export type CameraPose = {
   target: [number, number, number];
 };
 
+type BoardCameraPoseOptions = {
+  focusStrength?: number;
+};
+
+const DEFAULT_FOCUS_STRENGTH = 0.25;
 const round = (value: number) => Number(value.toFixed(4));
 
 export const getBoardPoint = (
@@ -19,12 +24,21 @@ export const getBoardPoint = (
 
 export const getBoardCameraPose = (
   board: BoardDimensions,
-  focusedTile?: Position | null
+  focusedTile?: Position | null,
+  options: BoardCameraPoseOptions = {}
 ): CameraPose => {
   const largestSide = Math.max(board.rows, board.columns);
-  const target: [number, number, number] = focusedTile
+  const focusStrength = focusedTile
+    ? (options.focusStrength ?? DEFAULT_FOCUS_STRENGTH)
+    : 0;
+  const focusedPoint: [number, number, number] = focusedTile
     ? getBoardPoint(board, focusedTile)
     : [0, 0, 0];
+  const target: [number, number, number] = [
+    round(focusedPoint[0] * focusStrength),
+    round(focusedPoint[1] * focusStrength),
+    round(focusedPoint[2] * focusStrength)
+  ];
   const offset = largestSide * 1.1;
 
   return {

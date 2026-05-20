@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'bun:test';
 
 import { createMatch, isLegalPlacement, placeAtom } from '../atoms-match-rules';
-import { chooseNpcPlacement } from '../atoms-npc-strategy';
+import {
+  chooseBaselineNpcPlacement,
+  chooseTacticalNpcPlacement
+} from '../atoms-npc-strategy';
 import { seedBoard, withPlayersHavingTakenTurns } from './atoms-test-fixtures';
 
 describe('atoms NPC strategy', () => {
-  it('chooses a legal placement and prefers an obvious winning capture', () => {
+  it('baseline chooses a legal placement and prefers an obvious winning capture', () => {
     const npcTurnMatch = {
       ...withPlayersHavingTakenTurns(
         seedBoard(createMatch({ columns: 3, rows: 3 }), [
@@ -17,13 +20,35 @@ describe('atoms NPC strategy', () => {
       activePlayerId: 'player-2' as const
     };
 
-    expect(chooseNpcPlacement(npcTurnMatch)).toEqual({ column: 0, row: 1 });
+    expect(chooseBaselineNpcPlacement(npcTurnMatch)).toEqual({
+      column: 0,
+      row: 1
+    });
     expect(
-      isLegalPlacement(npcTurnMatch, chooseNpcPlacement(npcTurnMatch)!)
+      isLegalPlacement(npcTurnMatch, chooseBaselineNpcPlacement(npcTurnMatch)!)
     ).toBe(true);
   });
 
-  it('avoids a stalemate placement when a non-stalemate placement is available', () => {
+  it('tactical chooses a legal placement and prefers immediate Victory', () => {
+    const npcTurnMatch = {
+      ...withPlayersHavingTakenTurns(
+        seedBoard(createMatch({ columns: 3, rows: 3 }), [
+          { column: 0, count: 1, ownerId: 'player-1', row: 0 },
+          { column: 0, count: 2, ownerId: 'player-2', row: 1 },
+          { column: 2, count: 1, ownerId: 'player-2', row: 2 }
+        ])
+      ),
+      activePlayerId: 'player-2' as const
+    };
+
+    const move = chooseTacticalNpcPlacement(npcTurnMatch);
+
+    expect(move).toEqual({ column: 0, row: 1 });
+    expect(isLegalPlacement(npcTurnMatch, move!)).toBe(true);
+    expect(placeAtom(npcTurnMatch, move!).state.winnerId).toBe('player-2');
+  });
+
+  it('tactical avoids a stalemate placement when a non-stalemate placement is available', () => {
     const npcTurnMatch = seedBoard(createMatch({ columns: 3, rows: 3 }), [
       { column: 0, count: 1, ownerId: 'player-1', row: 0 },
       { column: 1, count: 2, ownerId: 'player-1', row: 0 },
@@ -34,13 +59,13 @@ describe('atoms NPC strategy', () => {
       { column: 0, count: 1, ownerId: 'player-1', row: 2 },
       { column: 2, count: 1, ownerId: 'player-1', row: 2 }
     ]);
-    const move = chooseNpcPlacement(npcTurnMatch);
+    const move = chooseTacticalNpcPlacement(npcTurnMatch);
 
     expect(move).not.toBe(null);
     expect(placeAtom(npcTurnMatch, move!).state.status).not.toBe('stalemate');
   });
 
-  it('does not place on neutral atoms and values capturing them', () => {
+  it('tactical does not place on neutral atoms and values capturing them', () => {
     const npcTurnMatch = {
       ...seedBoard(
         createMatch({
@@ -57,6 +82,9 @@ describe('atoms NPC strategy', () => {
     };
 
     expect(isLegalPlacement(npcTurnMatch, { column: 1, row: 0 })).toBe(false);
-    expect(chooseNpcPlacement(npcTurnMatch)).toEqual({ column: 0, row: 0 });
+    expect(chooseTacticalNpcPlacement(npcTurnMatch)).toEqual({
+      column: 0,
+      row: 0
+    });
   });
 });

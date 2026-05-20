@@ -14,8 +14,8 @@ import {
   type Position,
   type MatchState as RuleMatchState
 } from './atoms-match-rules';
+import { defaultNpcMatchStrategy } from './atoms-match-strategy';
 import { getNextGameMode, isNpcControlled, type GameMode } from './atoms-mode';
-import { chooseNpcPlacement } from './atoms-npc-strategy';
 
 export const MATCH_TIMINGS = {
   illegalFlashMs: 280,
@@ -235,7 +235,7 @@ const executeNpcMove = (
     return { effects: [], state };
   }
 
-  const move = chooseNpcPlacement(state.match);
+  const move = defaultNpcMatchStrategy.choosePlacement(state.match);
   if (!move) {
     return { effects: [], state };
   }

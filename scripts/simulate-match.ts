@@ -21,7 +21,7 @@ type CliOptions = {
 
 type ParsedSnapshotSuccess = Extract<ParseSnapshotResult, { ok: true }>;
 
-const usage = `Usage: bun run simulate-match -- [snapshot.json] [--json] [--max-turns N] [--strategy heuristic]\n`;
+const usage = `Usage: bun run simulate-match -- [snapshot.json] [--json] [--max-turns N] [--strategy tactical]\n`;
 
 const fail = (message: string): never => {
   process.stderr.write(`${message}\n`);
@@ -49,7 +49,7 @@ const parseArgs = (args: string[]): CliOptions => {
     inputPath: null,
     json: false,
     maxTurns: DEFAULT_MAX_SIMULATION_TURNS,
-    strategyId: 'heuristic'
+    strategyId: 'tactical'
   };
 
   for (let index = 0; index < args.length; index += 1) {

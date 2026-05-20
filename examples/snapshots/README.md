@@ -21,6 +21,8 @@ bun run simulate-match -- examples/snapshots/terminal-victory-3x3.json --json
 Expected outcomes:
 
 - `fresh-3x3.json`: plays from an empty Board; use a low `--max-turns` to exercise `turn-cap-reached`.
+- `fresh-6x6.json`: starts from an empty Small preset-sized Board.
+- `fresh-8x8.json`: starts from an empty Standard preset-sized Board.
 - `holes-in-progress-3x3.json`: continues an in-progress Match with one Hole and one Neutral Atom.
 - `neutral-4x4.json`: continues a Match with Neutral Atoms available for Capture.
 - `cascade-stalemate-2x2.json`: reaches engine Stalemate after the next NPC placement.

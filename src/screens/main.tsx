@@ -61,10 +61,12 @@ import {
   type GameMode
 } from '@helpers/atoms-mode';
 import { cn } from '@helpers/tailwind';
+import { usePrefersReducedMotion } from '@hooks/use-prefers-reduced-motion';
 
 const TILE_SIZE = 1;
 const ATOM_RADIUS = 0.13;
 const NEUTRAL_ATOM_COLOR = '#f8fafc';
+const TILE_FOCUS_STRENGTH = 0.25;
 
 const ignoreRaycast = () => undefined;
 
@@ -113,9 +115,11 @@ const getAtomOffsets = (atomCount: number): Array<readonly [number, number]> =>
 
 const CameraRig = ({
   focusedTile,
+  focusStrength,
   match
 }: {
   focusedTile: Position | null;
+  focusStrength: number;
   match: MatchState;
 }) => {
   const { camera } = useThree();
@@ -142,11 +146,12 @@ const CameraRig = ({
         columns: match.columns,
         rows: match.rows
       },
-      focusedTile
+      focusedTile,
+      { focusStrength }
     );
     desiredPosition.current.set(...pose.position);
     desiredTarget.current.set(...pose.target);
-  }, [focusedTile, match.columns, match.rows]);
+  }, [focusedTile, focusStrength, match.columns, match.rows]);
 
   useFrame(() => {
     camera.position.lerp(desiredPosition.current, 0.025);
@@ -354,10 +359,16 @@ const GameBoard = ({
   const cursorKey = positionKey(cursorTile);
   const hoveredKey = hoveredTile ? positionKey(hoveredTile) : null;
   const illegalKey = illegalTile ? positionKey(illegalTile) : null;
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const focusStrength = prefersReducedMotion ? 0 : TILE_FOCUS_STRENGTH;
 
   return (
     <>
-      <CameraRig focusedTile={hoveredTile ?? cursorTile} match={match} />
+      <CameraRig
+        focusedTile={hoveredTile ?? cursorTile}
+        focusStrength={focusStrength}
+        match={match}
+      />
       <ambientLight intensity={0.7} />
       <directionalLight castShadow intensity={1.15} position={[6, 10, 5]} />
       <group>
@@ -1046,11 +1057,7 @@ export const Main = () => {
                       ? 'border border-slate-300 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800'
                       : 'bg-slate-950 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200'
                   )}
-                  onClick={
-                    isActiveMatch
-                      ? openAbandonConfirmation
-                      : openSetup
-                  }
+                  onClick={isActiveMatch ? openAbandonConfirmation : openSetup}
                   type="button"
                 >
                   {isActiveMatch ? (
@@ -1058,9 +1065,7 @@ export const Main = () => {
                   ) : (
                     <Plus aria-hidden className={iconClassName} />
                   )}
-                  {isActiveMatch
-                    ? 'Abandon Match'
-                    : 'New Match'}
+                  {isActiveMatch ? 'Abandon Match' : 'New Match'}
                 </button>
               </div>
             </div>

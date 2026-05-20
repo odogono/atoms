@@ -39,7 +39,7 @@ describe('simulate-match CLI', () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout.toString()).toContain('Outcome: turn-cap-reached');
-    expect(result.stdout.toString()).toContain('Strategy: heuristic');
+    expect(result.stdout.toString()).toContain('Strategy: tactical');
     expect(result.stdout.toString()).toContain('Turns simulated: 1');
   });
 
@@ -56,7 +56,7 @@ describe('simulate-match CLI', () => {
       finalStatus: 'playing',
       maxTurns: 1,
       outcome: 'turn-cap-reached',
-      strategyId: 'heuristic',
+      strategyId: 'tactical',
       turnsSimulated: 1
     });
     expect(output.finalBoardControl.players).toHaveLength(2);

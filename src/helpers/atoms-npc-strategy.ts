@@ -5,8 +5,14 @@ import {
   isHole,
   placeAtom,
   type MatchState,
+  type PlayerId,
   type Position
 } from './atoms-match-rules';
+
+const TACTICAL_CANDIDATE_LIMIT = 8;
+
+const comparePositions = (a: Position, b: Position) =>
+  a.row - b.row || a.column - b.column;
 
 const countCells = (cells: MatchState['cells'], activePlayerId: string) => {
   let owned = 0;
@@ -25,6 +31,75 @@ const countCells = (cells: MatchState['cells'], activePlayerId: string) => {
     }
   }
   return { neutralAtoms, opponentAtoms, owned };
+};
+
+const getPlayer = (match: MatchState, playerId: PlayerId) =>
+  match.players.find(player => player.id === playerId)!;
+
+const evaluateMatchForPlayer = (match: MatchState, playerId: PlayerId) => {
+  if (match.status === 'won') {
+    return match.winnerId === playerId ? 1_000_000 : -1_000_000;
+  }
+
+  if (match.status === 'stalemate') {
+    return 0;
+  }
+
+  const player = getPlayer(match, playerId);
+  if (player.eliminated) {
+    return -1_000_000;
+  }
+
+  let ownedTiles = 0;
+  let opponentTiles = 0;
+  let ownedAtoms = 0;
+  let opponentAtoms = 0;
+  let neutralAtoms = 0;
+  let ownedCriticalPressure = 0;
+  let opponentCriticalPressure = 0;
+
+  for (let row = 0; row < match.rows; row += 1) {
+    for (let column = 0; column < match.columns; column += 1) {
+      const position = { column, row };
+      const cell = match.cells[row * match.columns + column]!;
+      if (isHole(cell)) {
+        continue;
+      }
+
+      if (!cell.ownerId) {
+        neutralAtoms += cell.atomCount;
+        continue;
+      }
+
+      const capacity = getCapacity(match, position);
+      const pressure = cell.atomCount / capacity;
+      if (cell.ownerId === playerId) {
+        ownedTiles += 1;
+        ownedAtoms += cell.atomCount;
+        ownedCriticalPressure += pressure;
+      } else {
+        opponentTiles += 1;
+        opponentAtoms += cell.atomCount;
+        opponentCriticalPressure += pressure;
+      }
+    }
+  }
+
+  const legalPlacements = getLegalPlacements({
+    ...match,
+    activePlayerId: playerId
+  }).length;
+
+  return (
+    ownedTiles * 90 +
+    ownedAtoms * 35 +
+    ownedCriticalPressure * 28 +
+    legalPlacements * 2 -
+    opponentTiles * 80 -
+    opponentAtoms * 32 -
+    opponentCriticalPressure * 22 -
+    neutralAtoms * 4
+  );
 };
 
 const scorePlacement = (
@@ -61,10 +136,10 @@ const scorePlacement = (
   );
 };
 
-export const chooseNpcPlacement = (match: MatchState): Position | null => {
+const rankPlacements = (match: MatchState) => {
   const legalPlacements = getLegalPlacements(match);
   if (legalPlacements.length === 0) {
-    return null;
+    return [];
   }
 
   const {
@@ -84,5 +159,57 @@ export const chooseNpcPlacement = (match: MatchState): Position | null => {
         beforeOpponentAtoms
       )
     }))
-    .sort((a, b) => b.score - a.score)[0]!.placement;
+    .sort(
+      (a, b) => b.score - a.score || comparePositions(a.placement, b.placement)
+    );
 };
+
+export const chooseBaselineNpcPlacement = (
+  match: MatchState
+): Position | null => rankPlacements(match)[0]?.placement ?? null;
+
+const scoreTacticalPlacement = (match: MatchState, position: Position) => {
+  const playerId = match.activePlayerId;
+  const result = placeAtom(match, position);
+
+  if (result.state.status === 'stalemate') {
+    return -2_000_000 - position.row * 0.01 - position.column * 0.001;
+  }
+
+  if (result.state.status !== 'playing') {
+    return evaluateMatchForPlayer(result.state, playerId);
+  }
+
+  const opponentReplies = rankPlacements(result.state).slice(
+    0,
+    TACTICAL_CANDIDATE_LIMIT
+  );
+
+  if (opponentReplies.length === 0) {
+    return evaluateMatchForPlayer(result.state, playerId);
+  }
+
+  return Math.min(
+    ...opponentReplies.map(reply =>
+      evaluateMatchForPlayer(
+        placeAtom(result.state, reply.placement).state,
+        playerId
+      )
+    )
+  );
+};
+
+export const chooseTacticalNpcPlacement = (
+  match: MatchState
+): Position | null =>
+  rankPlacements(match)
+    .slice(0, TACTICAL_CANDIDATE_LIMIT)
+    .map(({ placement }) => ({
+      placement,
+      score: scoreTacticalPlacement(match, placement)
+    }))
+    .sort(
+      (a, b) => b.score - a.score || comparePositions(a.placement, b.placement)
+    )[0]?.placement ?? null;
+
+export const chooseNpcPlacement = chooseTacticalNpcPlacement;

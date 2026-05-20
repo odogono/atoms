@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Softened the board camera so Tile focus drifts subtly instead of fully recentering, and disables Tile-following drift for reduced-motion users.
+
 ## [0.4.1]
 
 ### Added

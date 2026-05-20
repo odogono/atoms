@@ -10,12 +10,25 @@ describe('atoms board camera', () => {
     });
   });
 
-  it('focuses the hovered tile using board-centred coordinates', () => {
+  it('drifts partway toward the focused tile using board-centred coordinates', () => {
     expect(
       getBoardCameraPose({ columns: 8, rows: 8 }, { column: 7, row: 0 })
     ).toEqual({
-      position: [12.3, 11.2, 5.3],
-      target: [3.5, 0, -3.5]
+      position: [9.675, 11.2, 7.925],
+      target: [0.875, 0, -0.875]
+    });
+  });
+
+  it('keeps the camera board-centred when focus strength is zero', () => {
+    expect(
+      getBoardCameraPose(
+        { columns: 8, rows: 8 },
+        { column: 7, row: 0 },
+        { focusStrength: 0 }
+      )
+    ).toEqual({
+      position: [8.8, 11.2, 8.8],
+      target: [0, 0, 0]
     });
   });
 });

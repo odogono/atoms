@@ -12,7 +12,7 @@ import {
   type MatchMetric
 } from './atoms-match-stats';
 import {
-  heuristicMatchStrategy,
+  defaultNpcMatchStrategy,
   type MatchStrategy
 } from './atoms-match-strategy';
 
@@ -128,7 +128,7 @@ export const simulateNpcMatch = (
   match: MatchState,
   {
     maxTurns = DEFAULT_MAX_SIMULATION_TURNS,
-    strategy = heuristicMatchStrategy
+    strategy = defaultNpcMatchStrategy
   }: SimulateNpcMatchOptions = {}
 ): MatchSimulationResult => {
   if (!Number.isInteger(maxTurns) || maxTurns < 0) {
