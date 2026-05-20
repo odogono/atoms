@@ -1,0 +1,30 @@
+{
+  "match": {
+    "activePlayer": "2",
+    "board": ["11 [] []", "[] .. 21", "[] N1 []"],
+    "players": [
+      {
+        "color": "#2563eb",
+        "eliminated": false,
+        "hasTakenTurn": true,
+        "id": "player-1",
+        "name": "Player 1",
+        "token": "1"
+      },
+      {
+        "color": "#dc2626",
+        "eliminated": false,
+        "hasTakenTurn": true,
+        "id": "player-2",
+        "name": "Player 2",
+        "token": "2"
+      }
+    ],
+    "status": "playing",
+    "turnNumber": 4,
+    "winner": null
+  },
+  "mode": "local",
+  "presetIndex": null,
+  "version": 2
+}

@@ -1,0 +1,30 @@
+{
+  "match": {
+    "activePlayer": "1",
+    "board": ["11 11 []", "[] [] []", "[] [] []"],
+    "players": [
+      {
+        "color": "#2563eb",
+        "eliminated": false,
+        "hasTakenTurn": true,
+        "id": "player-1",
+        "name": "Player 1",
+        "token": "1"
+      },
+      {
+        "color": "#dc2626",
+        "eliminated": true,
+        "hasTakenTurn": true,
+        "id": "player-2",
+        "name": "Player 2",
+        "token": "2"
+      }
+    ],
+    "status": "won",
+    "turnNumber": 7,
+    "winner": "1"
+  },
+  "mode": "npc-vs-npc",
+  "presetIndex": null,
+  "version": 2
+}

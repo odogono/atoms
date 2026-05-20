@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.1]
+
+### Added
+
+- Added an NPC-only Match simulation harness for running versioned Match Snapshots outside the UI.
+- Added `bun run simulate-match` with file/stdin input, human and JSON output, turn caps, and aggregate Match statistics.
+- Added Match Snapshot and Board Setup glossary language to disambiguate informal "map" references.
+
 ## [0.4.0]
 
 ### Added

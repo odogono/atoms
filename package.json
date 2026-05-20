@@ -1,6 +1,6 @@
 {
   "name": "r3f-starter-bun",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,6 +13,7 @@
     "lint": "eslint --cache .",
     "lint:fix": "eslint --fix .",
     "outdated": "bun update --interactive",
+    "simulate-match": "bun scripts/simulate-match.ts",
     "unused": "knip"
   },
   "dependencies": {

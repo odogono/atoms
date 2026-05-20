@@ -31,6 +31,14 @@ A Player whose placements are chosen by code.
 **Match**:
 One playable session of Atoms, from initial Board through Victory or Stalemate, including selected mode, Board size, turn flow, and Cascade playback.
 
+**Match Snapshot**:
+A serialized Match state that can be saved, loaded, or used as simulation input.
+_Avoid_: Map
+
+**Board Setup**:
+The initial shape and contents of a Board before turn play, including dimensions, Holes, and Neutral Atoms.
+_Avoid_: Map
+
 **Round**:
 A completed cycle of turns by the Match's non-eliminated Players.
 
@@ -79,6 +87,8 @@ _Avoid_: Dominance, threat level
 - A **Board** contains many **Cells**.
 - A **Cell** is either a **Tile** or a **Hole**.
 - A **Match** contains one active **Board** and its participating **Players**.
+- A **Match Snapshot** represents one **Match** at a specific point in turn flow.
+- A **Board Setup** describes the starting **Board** for a **Match**.
 - An **NPC** is a **Player** controlled by the Match UI instead of a human.
 - A **Tile** contains zero or more **Atoms** owned by at most one **Player**, or Neutral Atoms.
 - A **Hole** contains no **Atoms** and has no owner.
@@ -112,3 +122,4 @@ _Avoid_: Dominance, threat level
 - "Victory requires a stable Board" was previously accepted; resolved: **Elimination** after an **Explosion Wave** can produce **Victory** before a repeating **Cascade** becomes **Stalemate**.
 - "hole" could have meant a blocked tile; resolved: a **Hole** is not a **Tile**, but absent board space represented by a **Cell** in the rectangular **Board** grid.
 - "orphaned atoms" was used informally; resolved: use **Neutral Atom** for atoms that start without Player ownership.
+- "map" was used informally; resolved: use **Match Snapshot** for arbitrary serialized Match state, and **Board Setup** only for Board dimensions, Holes, and Neutral Atoms.

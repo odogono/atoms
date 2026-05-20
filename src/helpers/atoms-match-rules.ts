@@ -118,7 +118,7 @@ const assertPosition = (game: MatchState, position: Position) => {
   }
 };
 
-const cloneGame = (game: MatchState): MatchState => ({
+export const cloneGame = (game: MatchState): MatchState => ({
   ...game,
   cells: game.cells.map(cell => ({ ...cell })),
   players: game.players.map(player => ({ ...player }))
