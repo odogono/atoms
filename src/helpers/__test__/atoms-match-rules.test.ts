@@ -4,8 +4,10 @@ import {
   BOARD_SIZE_PRESETS,
   createMatch,
   getCapacity,
+  getCell,
   getLegalPlacements,
   getTile,
+  isHole,
   isLegalPlacement,
   placeAtom
 } from '../atoms-match-rules';
@@ -86,6 +88,135 @@ describe('atoms match rules', () => {
     expect(isLegalPlacement(match, { column: 2, row: 0 })).toBe(true);
     expect(isLegalPlacement(match, { column: 0, row: 0 })).toBe(true);
     expect(isLegalPlacement(match, { column: 1, row: 0 })).toBe(false);
+  });
+
+  it('allows direct placement on destructible tiles without damaging hit points', () => {
+    const match = createMatch({
+      columns: 3,
+      destructibleTiles: [{ column: 1, hitPoints: 2, row: 1 }],
+      rows: 3
+    });
+
+    const result = placeAtom(match, { column: 1, row: 1 });
+
+    expect(getTile(result.state, { column: 1, row: 1 })).toEqual({
+      atomCount: 1,
+      hitPoints: 2,
+      kind: 'tile',
+      ownerId: 'player-1'
+    });
+  });
+
+  it('damages and captures destructible tiles from incoming explosion atoms', () => {
+    const match = seedBoard(
+      createMatch({
+        columns: 3,
+        destructibleTiles: [{ column: 1, hitPoints: 2, row: 0 }],
+        rows: 3
+      }),
+      [
+        { column: 0, count: 1, ownerId: 'player-1', row: 0 },
+        { column: 1, count: 1, hitPoints: 2, ownerId: 'player-2', row: 0 }
+      ]
+    );
+
+    const result = placeAtom(match, { column: 0, row: 0 });
+
+    expect(getTile(result.state, { column: 1, row: 0 })).toEqual({
+      atomCount: 2,
+      hitPoints: 1,
+      kind: 'tile',
+      ownerId: 'player-1'
+    });
+  });
+
+  it('turns destructible tiles into holes when incoming damage exhausts hit points', () => {
+    const match = seedBoard(
+      createMatch({
+        columns: 3,
+        destructibleTiles: [{ column: 1, hitPoints: 1, row: 0 }],
+        rows: 3
+      }),
+      [{ column: 0, count: 1, ownerId: 'player-1', row: 0 }]
+    );
+
+    const result = placeAtom(match, { column: 0, row: 0 });
+
+    expect(isHole(getCell(result.state, { column: 1, row: 0 }))).toBe(true);
+  });
+
+  it('self-damages destructible source tiles after emitting atoms', () => {
+    const match = seedBoard(
+      createMatch({
+        columns: 3,
+        destructibleTiles: [{ column: 1, hitPoints: 2, row: 0 }],
+        rows: 3
+      }),
+      [{ column: 1, count: 2, hitPoints: 2, ownerId: 'player-1', row: 0 }]
+    );
+
+    const result = placeAtom(match, { column: 1, row: 0 });
+
+    expect(getTile(result.state, { column: 1, row: 0 })).toEqual({
+      atomCount: 0,
+      hitPoints: 1,
+      kind: 'tile',
+      ownerId: null
+    });
+  });
+
+  it('batches same-wave incoming atoms before removing destroyed tiles', () => {
+    const match = seedBoard(
+      createMatch({
+        columns: 3,
+        destructibleTiles: [{ column: 1, hitPoints: 1, row: 1 }],
+        playerCount: 3,
+        rows: 3
+      }),
+      [
+        { column: 1, count: 2, ownerId: 'player-1', row: 0 },
+        { column: 0, count: 3, ownerId: 'player-2', row: 1 },
+        { column: 1, count: 1, hitPoints: 1, ownerId: 'player-3', row: 1 }
+      ]
+    );
+
+    const result = placeAtom(match, { column: 1, row: 0 });
+
+    expect(result.waves[0]?.paths).toEqual(
+      expect.arrayContaining([
+        {
+          from: { column: 1, row: 0 },
+          ownerId: 'player-1',
+          to: { column: 1, row: 1 }
+        },
+        {
+          from: { column: 0, row: 1 },
+          ownerId: 'player-2',
+          to: { column: 1, row: 1 }
+        }
+      ])
+    );
+    expect(isHole(getCell(result.state, { column: 1, row: 1 }))).toBe(true);
+  });
+
+  it('collapses unsupported tiles after destructible tiles are destroyed', () => {
+    const match = seedBoard(
+      createMatch({
+        columns: 3,
+        destructibleTiles: [{ column: 1, hitPoints: 1, row: 0 }],
+        rows: 3
+      }),
+      [
+        { column: 0, count: 1, ownerId: 'player-2', row: 0 },
+        { column: 0, count: 1, ownerId: 'player-1', row: 1 },
+        { column: 1, count: 2, hitPoints: 1, ownerId: 'player-1', row: 0 }
+      ]
+    );
+
+    const result = placeAtom(match, { column: 1, row: 0 });
+
+    expect(isHole(getCell(result.state, { column: 1, row: 0 }))).toBe(true);
+    expect(isHole(getCell(result.state, { column: 0, row: 0 }))).toBe(true);
   });
 
   it('treats neutral atom tiles as occupied but not player-placeable', () => {
@@ -314,6 +445,21 @@ describe('atoms match rules', () => {
           { column: 4, count: 1, row: 5 }
         ],
         rows: 8
+      },
+      {
+        columns: 6,
+        destructibleTiles: [
+          { column: 1, hitPoints: 1, row: 0 },
+          { column: 0, hitPoints: 1, row: 1 },
+          { column: 4, hitPoints: 1, row: 0 },
+          { column: 5, hitPoints: 1, row: 1 },
+          { column: 0, hitPoints: 1, row: 4 },
+          { column: 1, hitPoints: 1, row: 5 },
+          { column: 5, hitPoints: 1, row: 4 },
+          { column: 4, hitPoints: 1, row: 5 }
+        ],
+        label: 'Destructible',
+        rows: 6
       }
     ]);
   });

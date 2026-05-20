@@ -3,9 +3,11 @@ import {
   getCell,
   getPlayablePositions,
   getTile,
+  isDestructibleTile,
   isHole,
   validateBoardTopology,
   type BoardCell,
+  type DestructibleTileSetup,
   type MatchState,
   type MatchStatus,
   type Player,
@@ -20,6 +22,7 @@ export type SnapshotPlayer = Player & {
 export type MatchSnapshot = {
   activePlayer: string;
   board: string[];
+  destructibleTiles?: DestructibleTileSetup[];
   players: SnapshotPlayer[];
   status: MatchStatus;
   turnNumber: number;
@@ -30,7 +33,7 @@ export type AtomsSnapshot = {
   match: MatchSnapshot;
   mode: GameMode;
   presetIndex: number | null;
-  version: 2;
+  version: 2 | 3;
 };
 
 export type ParseSnapshotResult =
@@ -46,7 +49,7 @@ type SerializeMatchSnapshotInput = {
 const GAME_MODES = new Set<GameMode>(['local', 'npc', 'npc-vs-npc']);
 const MATCH_STATUSES = new Set<MatchStatus>(['playing', 'stalemate', 'won']);
 const CELL_TOKEN_LENGTH = 2;
-const SNAPSHOT_VERSIONS = new Set([1, 2]);
+const SNAPSHOT_VERSIONS = new Set([1, 2, 3]);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -101,6 +104,25 @@ const formatBoardRows = (
     ).join(' ')
   );
 
+const getDestructibleTiles = (match: MatchState): DestructibleTileSetup[] => {
+  const destructibleTiles: DestructibleTileSetup[] = [];
+
+  for (let index = 0; index < match.cells.length; index += 1) {
+    const cell = match.cells[index]!;
+    if (!isDestructibleTile(cell)) {
+      continue;
+    }
+
+    const position = {
+      column: index % match.columns,
+      row: Math.floor(index / match.columns)
+    };
+    destructibleTiles.push({ ...position, hitPoints: cell.hitPoints });
+  }
+
+  return destructibleTiles;
+};
+
 export const serializeMatchSnapshot = ({
   match,
   mode,
@@ -108,11 +130,13 @@ export const serializeMatchSnapshot = ({
 }: SerializeMatchSnapshotInput): AtomsSnapshot => {
   const players = getSnapshotPlayers(match);
   const tokenByPlayerId = getTokenByPlayerId(players);
+  const destructibleTiles = getDestructibleTiles(match);
 
   return {
     match: {
       activePlayer: tokenByPlayerId.get(match.activePlayerId)!,
       board: formatBoardRows(match, tokenByPlayerId),
+      ...(destructibleTiles.length > 0 ? { destructibleTiles } : {}),
       players,
       status: match.status,
       turnNumber: match.turnNumber,
@@ -122,7 +146,7 @@ export const serializeMatchSnapshot = ({
     },
     mode,
     presetIndex,
-    version: 2
+    version: destructibleTiles.length > 0 ? 3 : 2
   };
 };
 
@@ -294,6 +318,83 @@ const parseBoard = (
   };
 };
 
+const parseDestructibleTiles = (
+  value: unknown,
+  board: Pick<MatchState, 'cells' | 'columns' | 'rows'>,
+  errors: string[]
+): DestructibleTileSetup[] => {
+  if (value === undefined) {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    addError(errors, 'match.destructibleTiles must be an array.');
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const destructibleTiles: DestructibleTileSetup[] = [];
+
+  for (const [index, entry] of value.entries()) {
+    if (!isRecord(entry)) {
+      addError(errors, `match.destructibleTiles[${index}] must be an object.`);
+      continue;
+    }
+
+    const { column, hitPoints, row } = entry;
+    if (
+      !Number.isInteger(column) ||
+      !Number.isInteger(row) ||
+      !Number.isInteger(hitPoints) ||
+      (hitPoints as number) < 1 ||
+      (hitPoints as number) > 9
+    ) {
+      addError(errors, `Invalid Destructible Tile metadata at index ${index}.`);
+      continue;
+    }
+
+    const position = { column: column as number, row: row as number };
+    if (
+      position.row < 0 ||
+      position.row >= board.rows ||
+      position.column < 0 ||
+      position.column >= board.columns
+    ) {
+      addError(
+        errors,
+        `Destructible Tile at ${position.row},${position.column} is out of bounds.`
+      );
+      continue;
+    }
+
+    const key = `${position.row}:${position.column}`;
+    if (seen.has(key)) {
+      addError(
+        errors,
+        `Duplicate Destructible Tile at ${position.row},${position.column}.`
+      );
+      continue;
+    }
+    seen.add(key);
+
+    const cell = board.cells[position.row * board.columns + position.column]!;
+    if (isHole(cell)) {
+      addError(
+        errors,
+        `Destructible Tile at ${position.row},${position.column} overlaps a hole.`
+      );
+      continue;
+    }
+
+    destructibleTiles.push({
+      ...position,
+      hitPoints: hitPoints as number
+    });
+  }
+
+  return destructibleTiles;
+};
+
 const hasCriticalTile = (match: MatchState) =>
   getPlayablePositions(match).some(
     position =>
@@ -311,7 +412,7 @@ export const parseMatchSnapshot = (input: unknown): ParseSnapshotResult => {
     typeof input.version !== 'number' ||
     !SNAPSHOT_VERSIONS.has(input.version)
   ) {
-    addError(errors, 'Snapshot version must be 1 or 2.');
+    addError(errors, 'Snapshot version must be 1, 2, or 3.');
   }
 
   if (
@@ -380,6 +481,29 @@ export const parseMatchSnapshot = (input: unknown): ParseSnapshotResult => {
   );
   if (errors.length > 0 || !board || !activePlayer) {
     return { errors, ok: false };
+  }
+
+  if (input.match.destructibleTiles !== undefined && input.version !== 3) {
+    addError(errors, 'Destructible Tile metadata requires snapshot version 3.');
+  }
+
+  const destructibleTiles = parseDestructibleTiles(
+    input.match.destructibleTiles,
+    board,
+    errors
+  );
+  if (errors.length > 0) {
+    return { errors, ok: false };
+  }
+
+  for (const destructibleTile of destructibleTiles) {
+    const cell =
+      board.cells[
+        destructibleTile.row * board.columns + destructibleTile.column
+      ];
+    if (cell && !isHole(cell)) {
+      cell.hitPoints = destructibleTile.hitPoints;
+    }
   }
 
   const match: MatchState = {

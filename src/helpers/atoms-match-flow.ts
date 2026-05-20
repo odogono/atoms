@@ -77,6 +77,7 @@ const getPreset = (presetIndex: number): BoardSizePreset =>
 const createMatchForPreset = (preset: BoardSizePreset) =>
   createMatch({
     columns: preset.columns,
+    destructibleTiles: preset.destructibleTiles,
     neutralAtoms: preset.neutralAtoms,
     playerCount: 2,
     rows: preset.rows

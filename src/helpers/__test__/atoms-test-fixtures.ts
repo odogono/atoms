@@ -8,6 +8,7 @@ import {
 type SeedTile = {
   column: number;
   count: number;
+  hitPoints?: number;
   ownerId: PlayerId | null;
   row: number;
 };
@@ -21,6 +22,7 @@ export const seedBoard = (match: MatchState, tiles: SeedTile[]) => {
   for (const tile of tiles) {
     next.cells[tile.row * match.columns + tile.column] = {
       atomCount: tile.count,
+      ...(tile.hitPoints ? { hitPoints: tile.hitPoints } : {}),
       kind: 'tile',
       ownerId: tile.ownerId
     };

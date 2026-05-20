@@ -38,6 +38,7 @@ import {
   getCapacity,
   getLegalPlacements,
   indexToPosition,
+  isDestructibleTile,
   isHole,
   positionKey,
   type ExplosionPath,
@@ -258,6 +259,7 @@ const BoardTile = ({
 }) => {
   const worldPosition = getWorldPosition(match, position);
   const capacity = getCapacity(match, position);
+  const isDestructible = isDestructibleTile(tile);
 
   const tileColor = isIllegalFlash
     ? '#f97316'
@@ -267,7 +269,9 @@ const BoardTile = ({
         ? '#bfdbfe'
         : isLegal
           ? '#dbeafe'
-          : '#e5e7eb';
+          : isDestructible
+            ? '#a8a29e'
+            : '#e5e7eb';
   const tileEmissive = isHovered
     ? '#facc15'
     : isCursor || isLegal
@@ -303,6 +307,39 @@ const BoardTile = ({
           roughness={0.72}
         />
       </mesh>
+      {isDestructible ? (
+        <>
+          <group
+            position={[worldPosition.x, 0.075, worldPosition.z]}
+            raycast={ignoreRaycast}
+          >
+            <mesh position={[-0.16, 0, -0.03]} rotation={[0, 0.72, 0]}>
+              <boxGeometry args={[0.035, 0.018, 0.44]} />
+              <meshStandardMaterial color="#57534e" roughness={0.88} />
+            </mesh>
+            <mesh position={[0.08, 0, 0.05]} rotation={[0, -0.55, 0]}>
+              <boxGeometry args={[0.028, 0.018, 0.32]} />
+              <meshStandardMaterial color="#6b5f58" roughness={0.88} />
+            </mesh>
+            <mesh position={[0.2, 0, -0.14]} rotation={[0, 1.12, 0]}>
+              <boxGeometry args={[0.024, 0.018, 0.22]} />
+              <meshStandardMaterial color="#78716c" roughness={0.88} />
+            </mesh>
+          </group>
+          <Html
+            center
+            distanceFactor={16}
+            position={[worldPosition.x - 0.31, 0.14, worldPosition.z - 0.31]}
+            style={{ pointerEvents: 'none' }}
+            transform
+            zIndexRange={[10, 0]}
+          >
+            <span className="pointer-events-none rounded-sm border border-stone-500/50 bg-stone-100 px-1 text-[8px] font-bold text-stone-800 shadow-sm select-none">
+              {tile.hitPoints}
+            </span>
+          </Html>
+        </>
+      ) : null}
       {tile.atomCount > 0 && playerColor ? (
         <AtomCluster
           atomCount={tile.atomCount}

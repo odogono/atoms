@@ -13,6 +13,9 @@ One coordinate on the board. A cell is either a playable tile or a hole.
 **Tile**:
 One playable cell on the board that may contain atoms owned by at most one player.
 
+**Destructible Tile**:
+A playable Tile with Hit Points. A Destructible Tile becomes a Hole when its Hit Points reach zero.
+
 **Hole**:
 Absent board space inside the board grid. A hole is not playable, cannot contain atoms, does not receive atoms during an explosion wave, and does not count toward tile capacity.
 
@@ -53,6 +56,10 @@ _Avoid_: Limit, threshold
 The state where a tile's atom count reaches its capacity.
 _Avoid_: Full, overloaded
 
+**Hit Points**:
+The durability remaining on a Destructible Tile.
+_Avoid_: Health, durability
+
 **Explosion Wave**:
 A simultaneous step in which every tile at critical mass emits atoms to its neighbours.
 _Avoid_: Blast, burst
@@ -60,6 +67,10 @@ _Avoid_: Blast, burst
 **Cascade**:
 The complete sequence of explosion waves caused by one placed atom.
 _Avoid_: Chain, combo
+
+**Collapse**:
+The removal of Tiles that no longer have enough playable neighbours after board space is destroyed.
+_Avoid_: Cave-in, support check
 
 **Capture**:
 The conversion of a tile's atoms to the owner of an incoming atom.
@@ -95,11 +106,15 @@ _Avoid_: Dominance, threat level
 - An **NPC** is a **Player** controlled by the Match UI instead of a human.
 - An **NPC Strategy** belongs to an **NPC** turn and chooses one legal placement.
 - A **Tile** contains zero or more **Atoms** owned by at most one **Player**, or Neutral Atoms.
+- A **Destructible Tile** is a **Tile** and may contain **Atoms** like any other **Tile**.
+- **Hit Points** belong to exactly one **Destructible Tile**.
 - A **Hole** contains no **Atoms** and has no owner.
 - A **Neutral Atom** is not a **Player** and never takes a turn.
 - A **Tile** reaches **Critical Mass** when its atom count equals or exceeds its **Capacity**.
 - An **Explosion Wave** may cause **Capture** and may start another **Explosion Wave**.
 - An **Explosion Wave** may cause **Elimination**.
+- An **Explosion Wave** may reduce **Hit Points** and turn **Destructible Tiles** into **Holes**.
+- **Collapse** may turn unsupported **Tiles** into **Holes**.
 - A **Cascade** belongs to exactly one turn.
 - A **Cascade** may resolve to a stable **Board**, **Victory**, or **Stalemate**.
 - **Victory** is checked after each **Explosion Wave** and after a stable **Board**.
@@ -118,6 +133,9 @@ _Avoid_: Dominance, threat level
 > **Dev:** "Can a Player place an atom on a Tile containing Neutral Atoms?"
 > **Domain expert:** "No. Neutral Atoms already occupy the Tile. They can only become Player-owned through Capture."
 
+> **Dev:** "Can a Player place an atom on a Destructible Tile?"
+> **Domain expert:** "Yes. A Destructible Tile is still a Tile; only Explosion Waves reduce its Hit Points."
+
 ## Flagged ambiguities
 
 - "critical mass" was first described as always four atoms; resolved: **Capacity** is the tile's orthogonal neighbour count, so corners have capacity 2, edges 3, and interior tiles 4.
@@ -127,3 +145,4 @@ _Avoid_: Dominance, threat level
 - "hole" could have meant a blocked tile; resolved: a **Hole** is not a **Tile**, but absent board space represented by a **Cell** in the rectangular **Board** grid.
 - "orphaned atoms" was used informally; resolved: use **Neutral Atom** for atoms that start without Player ownership.
 - "map" was used informally; resolved: use **Match Snapshot** for arbitrary serialized Match state, and **Board Setup** only for Board dimensions, Holes, and Neutral Atoms.
+- "destroyed tile" could have meant an empty Tile; resolved: a destroyed **Destructible Tile** becomes a **Hole**.

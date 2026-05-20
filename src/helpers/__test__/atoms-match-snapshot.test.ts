@@ -78,6 +78,47 @@ describe('atoms match snapshots', () => {
     }
   });
 
+  it('round-trips destructible tile metadata without changing board tokens', () => {
+    const match = {
+      ...seedBoard(
+        createMatch({
+          columns: 3,
+          destructibleTiles: [{ column: 1, hitPoints: 2, row: 0 }],
+          rows: 3
+        }),
+        [{ column: 1, count: 1, hitPoints: 2, ownerId: 'player-1', row: 0 }]
+      ),
+      activePlayerId: 'player-2' as const,
+      turnNumber: 3
+    };
+    const snapshot = serializeMatchSnapshot({
+      match,
+      mode: 'local',
+      presetIndex: null
+    });
+
+    expect(snapshot).toMatchObject({
+      match: {
+        board: ['[] 11 []', '[] [] []', '[] [] []'],
+        destructibleTiles: [{ column: 1, hitPoints: 2, row: 0 }]
+      },
+      version: 3
+    });
+
+    const parsed = parseMatchSnapshot(snapshot);
+
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.snapshot).toEqual(snapshot);
+      expect(getCell(parsed.match, { column: 1, row: 0 })).toEqual({
+        atomCount: 1,
+        hitPoints: 2,
+        kind: 'tile',
+        ownerId: 'player-1'
+      });
+    }
+  });
+
   it('parses version 1 snapshots without neutral atom tokens', () => {
     const parsed = parseMatchSnapshot({
       match: {
@@ -214,6 +255,26 @@ describe('atoms match snapshots', () => {
         ...base,
         match: { ...base.match, board: ['[] N1 []', '[] [] []', '[] [] []'] },
         version: 1
+      }).ok
+    ).toBe(false);
+    expect(
+      parseMatchSnapshot({
+        ...base,
+        match: {
+          ...base.match,
+          destructibleTiles: [{ column: 1, hitPoints: 1, row: 1 }]
+        },
+        version: 2
+      }).ok
+    ).toBe(false);
+    expect(
+      parseMatchSnapshot({
+        ...base,
+        match: {
+          ...base.match,
+          destructibleTiles: [{ column: 1, hitPoints: 10, row: 1 }]
+        },
+        version: 3
       }).ok
     ).toBe(false);
   });

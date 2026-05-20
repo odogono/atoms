@@ -14,8 +14,13 @@ export type NeutralAtomSetup = Position & {
   count: number;
 };
 
+export type DestructibleTileSetup = Position & {
+  hitPoints: number;
+};
+
 export type BoardSizePreset = {
   columns: number;
+  destructibleTiles?: readonly DestructibleTileSetup[];
   label: string;
   neutralAtoms?: readonly NeutralAtomSetup[];
   rows: number;
@@ -29,11 +34,21 @@ export type Player = {
   name: string;
 };
 
-export type Tile = {
+type BaseTile = {
   atomCount: number;
   kind: 'tile';
   ownerId: PlayerId | null;
 };
+
+export type NormalTile = BaseTile & {
+  hitPoints?: never;
+};
+
+export type DestructibleTile = BaseTile & {
+  hitPoints: number;
+};
+
+export type Tile = NormalTile | DestructibleTile;
 
 export type Hole = {
   kind: 'hole';
@@ -85,6 +100,21 @@ export const BOARD_SIZE_PRESETS = [
       { column: 4, count: 1, row: 5 }
     ],
     rows: 8
+  },
+  {
+    columns: 6,
+    destructibleTiles: [
+      { column: 1, hitPoints: 1, row: 0 },
+      { column: 0, hitPoints: 1, row: 1 },
+      { column: 4, hitPoints: 1, row: 0 },
+      { column: 5, hitPoints: 1, row: 1 },
+      { column: 0, hitPoints: 1, row: 4 },
+      { column: 1, hitPoints: 1, row: 5 },
+      { column: 5, hitPoints: 1, row: 4 },
+      { column: 4, hitPoints: 1, row: 5 }
+    ],
+    label: 'Destructible',
+    rows: 6
   }
 ] as const satisfies BoardSizePreset[];
 
@@ -97,6 +127,7 @@ export const PLAYER_DEFINITIONS = [
 
 type CreateMatchOptions = {
   columns?: number;
+  destructibleTiles?: readonly DestructibleTileSetup[];
   holes?: Position[];
   neutralAtoms?: readonly NeutralAtomSetup[];
   playerCount?: number;
@@ -104,6 +135,9 @@ type CreateMatchOptions = {
 };
 
 export const isHole = (cell: BoardCell): cell is Hole => cell.kind === 'hole';
+
+export const isDestructibleTile = (cell: BoardCell): cell is DestructibleTile =>
+  !isHole(cell) && 'hitPoints' in cell;
 
 const assertPosition = (game: MatchState, position: Position) => {
   if (
@@ -143,6 +177,16 @@ const createEmptyTile = (): Tile => ({
   kind: 'tile',
   ownerId: null
 });
+
+const createEmptyTileFromSource = (tile: Tile): Tile =>
+  isDestructibleTile(tile)
+    ? {
+        atomCount: 0,
+        hitPoints: tile.hitPoints - 1,
+        kind: 'tile',
+        ownerId: null
+      }
+    : createEmptyTile();
 
 export const getCell = (game: MatchState, position: Position) => {
   assertPosition(game, position);
@@ -238,8 +282,29 @@ const validateNeutralAtom = (
   }
 };
 
+const validateDestructibleTile = (
+  game: MatchState,
+  destructibleTile: DestructibleTileSetup
+) => {
+  if (
+    !Number.isInteger(destructibleTile.hitPoints) ||
+    destructibleTile.hitPoints < 1 ||
+    destructibleTile.hitPoints > 9
+  ) {
+    throw new Error('Destructible Tile hit points must be between 1 and 9.');
+  }
+
+  const tile = getTile(game, destructibleTile);
+  if (tile.atomCount > 0 || tile.ownerId) {
+    throw new Error(
+      `Destructible Tile at ${destructibleTile.row},${destructibleTile.column} overlaps another atom.`
+    );
+  }
+};
+
 export const createMatch = ({
   columns = 8,
+  destructibleTiles = [],
   holes = [],
   neutralAtoms = [],
   playerCount = 2,
@@ -276,6 +341,12 @@ export const createMatch = ({
   }
 
   validateBoardTopology(match);
+
+  for (const destructibleTile of destructibleTiles) {
+    assertPosition(match, destructibleTile);
+    validateDestructibleTile(match, destructibleTile);
+    getTile(match, destructibleTile).hitPoints = destructibleTile.hitPoints;
+  }
 
   for (const neutralAtom of neutralAtoms) {
     assertPosition(match, neutralAtom);
@@ -334,7 +405,11 @@ const getCascadeSignature = (
   [
     game.cells
       .map(cell =>
-        isHole(cell) ? 'hole' : `${cell.ownerId ?? 'none'}:${cell.atomCount}`
+        isHole(cell)
+          ? 'hole'
+          : `${cell.ownerId ?? 'none'}:${cell.atomCount}:${
+              isDestructibleTile(cell) ? cell.hitPoints : 'solid'
+            }`
       )
       .join('|'),
     sources
@@ -397,6 +472,34 @@ const resolveEliminations = (game: MatchState) => {
   return declareVictoryIfOnlyOnePlayerRemains(game);
 };
 
+const removeDestroyedDestructibleTiles = (game: MatchState) => {
+  for (let index = 0; index < game.cells.length; index += 1) {
+    const cell = game.cells[index]!;
+    if (isDestructibleTile(cell) && cell.hitPoints <= 0) {
+      game.cells[index] = { kind: 'hole' };
+    }
+  }
+};
+
+const collapseUnsupportedTiles = (game: MatchState) => {
+  let collapsed = false;
+
+  while (true) {
+    const unsupported = getPlayablePositions(game).filter(
+      position => getCapacity(game, position) < 2
+    );
+
+    if (unsupported.length === 0) {
+      return collapsed;
+    }
+
+    collapsed = true;
+    for (const position of unsupported) {
+      game.cells[getCellIndex(game, position)] = { kind: 'hole' };
+    }
+  }
+};
+
 const resolveCascades = (
   game: MatchState,
   activePlayerId: PlayerId
@@ -424,7 +527,9 @@ const resolveCascades = (
     );
 
     for (const source of sources) {
-      game.cells[getCellIndex(game, source)] = createEmptyTile();
+      game.cells[getCellIndex(game, source)] = createEmptyTileFromSource(
+        getTile(game, source)
+      );
     }
 
     const incomingByTile = new Map<string, ExplosionPath[]>();
@@ -447,9 +552,15 @@ const resolveCascades = (
         incoming.map(path => path.ownerId)
       );
 
+      if (isDestructibleTile(tile)) {
+        tile.hitPoints -= incoming.length;
+      }
       tile.atomCount += incoming.length;
       tile.ownerId = ownerId;
     }
+
+    removeDestroyedDestructibleTiles(game);
+    collapseUnsupportedTiles(game);
 
     waves.push({ paths, sources });
     if (resolveEliminations(game)) {

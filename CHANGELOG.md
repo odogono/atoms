@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Added Destructible Tiles with Hit Points, destruction into Holes, recursive Collapse, snapshot v3 metadata, a 6x6 Destructible preset, and board HP rendering.
+
 ### Changed
 
 - Softened the board camera so Tile focus drifts subtly instead of fully recentering, and disables Tile-following drift for reduced-motion users.
