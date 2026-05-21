@@ -2,9 +2,12 @@ import { describe, expect, it } from 'bun:test';
 
 import {
   GAME_MODES,
+  getControllerPlayerLabel,
+  getDefaultControllers,
   getNextGameMode,
   getPlayerLabel,
-  isNpcControlled
+  isNpcControlled,
+  isNpcController
 } from '../atoms-mode';
 
 describe('atoms game modes', () => {
@@ -37,5 +40,26 @@ describe('atoms game modes', () => {
     expect(getNextGameMode('npc')).toBe('local');
     expect(getNextGameMode('local')).toBe('npc-vs-npc');
     expect(getNextGameMode('npc-vs-npc')).toBe('npc');
+  });
+
+  it('creates per-player controller defaults from legacy modes', () => {
+    const controllers = getDefaultControllers('npc', 4);
+
+    expect(controllers).toEqual({
+      'player-1': 'human',
+      'player-2': 'npc',
+      'player-3': 'human',
+      'player-4': 'human'
+    });
+    expect(isNpcController(controllers, 'player-2')).toBe(true);
+  });
+
+  it('labels players by controller assignment', () => {
+    expect(
+      getControllerPlayerLabel(
+        { 'player-1': 'human', 'player-2': 'npc', 'player-3': 'npc' },
+        'player-3'
+      )
+    ).toBe('NPC 2');
   });
 });

@@ -42,8 +42,11 @@ A serialized Match state that can be saved, loaded, or used as simulation input.
 _Avoid_: Map
 
 **Board Setup**:
-The initial shape and contents of a Board before turn play, including dimensions, Holes, and Neutral Atoms.
+The initial shape and contents of a Board before turn play, including dimensions, Holes, Neutral Atoms, and Destructible Tiles.
 _Avoid_: Map
+
+**Board Setup Draft**:
+An in-progress Board Setup being edited before it is valid enough to save or use in a Match.
 
 **Round**:
 A completed cycle of turns by the Match's non-eliminated Players.
@@ -103,6 +106,8 @@ _Avoid_: Dominance, threat level
 - A **Match** contains one active **Board** and its participating **Players**.
 - A **Match Snapshot** represents one **Match** at a specific point in turn flow.
 - A **Board Setup** describes the starting **Board** for a **Match**.
+- A **Board Setup Draft** becomes a **Board Setup** when it is valid enough to save or use in a **Match**.
+- A **Board Setup** may include **Destructible Tiles**.
 - An **NPC** is a **Player** controlled by the Match UI instead of a human.
 - An **NPC Strategy** belongs to an **NPC** turn and chooses one legal placement.
 - A **Tile** contains zero or more **Atoms** owned by at most one **Player**, or Neutral Atoms.
@@ -144,5 +149,7 @@ _Avoid_: Dominance, threat level
 - "Victory requires a stable Board" was previously accepted; resolved: **Elimination** after an **Explosion Wave** can produce **Victory** before a repeating **Cascade** becomes **Stalemate**.
 - "hole" could have meant a blocked tile; resolved: a **Hole** is not a **Tile**, but absent board space represented by a **Cell** in the rectangular **Board** grid.
 - "orphaned atoms" was used informally; resolved: use **Neutral Atom** for atoms that start without Player ownership.
-- "map" was used informally; resolved: use **Match Snapshot** for arbitrary serialized Match state, and **Board Setup** only for Board dimensions, Holes, and Neutral Atoms.
+- "map" was used informally; resolved: use **Match Snapshot** for arbitrary serialized Match state, and **Board Setup** only for Board dimensions, Holes, Neutral Atoms, and Destructible Tiles.
 - "destroyed tile" could have meant an empty Tile; resolved: a destroyed **Destructible Tile** becomes a **Hole**.
+- "Board Setup" previously omitted Destructible Tiles; resolved: **Board Setup** includes every pre-turn Board feature that can exist before a Match starts, including **Destructible Tiles**.
+- "Board Setup" could mean an invalid in-editor shape; resolved: use **Board Setup Draft** for editable intermediate shapes, and reserve **Board Setup** for valid shapes that can be saved or used in a **Match**.

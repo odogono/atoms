@@ -1,21 +1,31 @@
 import {
+  createBoardSetupFromPreset,
+  createMatchFromBoardSetup,
+  type BoardSetup
+} from './atoms-board-setup';
+import {
   getInitialCursor,
   moveCursor,
   type CursorDirection
 } from './atoms-cursor';
 import {
   BOARD_SIZE_PRESETS,
-  createMatch,
   isLegalPlacement,
   placeAtom,
-  type BoardSizePreset,
   type ExplosionWave,
   type PlaceAtomResult,
+  type PlayerId,
   type Position,
   type MatchState as RuleMatchState
 } from './atoms-match-rules';
 import { defaultNpcMatchStrategy } from './atoms-match-strategy';
-import { getNextGameMode, isNpcControlled, type GameMode } from './atoms-mode';
+import {
+  getDefaultControllers,
+  getNextGameMode,
+  isNpcController,
+  type GameMode,
+  type PlayerControllerById
+} from './atoms-mode';
 
 export const MATCH_TIMINGS = {
   illegalFlashMs: 280,
@@ -30,6 +40,8 @@ type Playback = {
 };
 
 export type MatchFlowState = {
+  boardSetup: BoardSetup;
+  controllers: PlayerControllerById;
   currentWave: ExplosionWave | null;
   cursorTile: Position;
   hoveredTile: Position | null;
@@ -38,7 +50,8 @@ export type MatchFlowState = {
   match: RuleMatchState;
   mode: GameMode;
   playback: Playback | null;
-  presetIndex: number;
+  playerCount: number;
+  presetIndex: number | null;
   runId: number;
 };
 
@@ -54,7 +67,14 @@ export type MatchFlowEvent =
   | { type: 'reset' }
   | { presetIndex: number; type: 'select-board-preset' }
   | { mode: GameMode; type: 'select-mode' }
-  | { mode: GameMode; presetIndex: number; type: 'start-match' };
+  | {
+      boardSetup?: BoardSetup;
+      controllers?: PlayerControllerById;
+      mode?: GameMode;
+      playerCount?: number;
+      presetIndex?: number | null;
+      type: 'start-match';
+    };
 
 export type MatchFlowEffect = {
   delayMs: number;
@@ -67,26 +87,40 @@ type MatchFlowUpdate = {
 };
 
 type CreateMatchOptions = {
+  boardSetup?: BoardSetup;
+  controllers?: PlayerControllerById;
   mode?: GameMode;
-  presetIndex?: number;
+  playerCount?: number;
+  presetIndex?: number | null;
 };
 
-const getPreset = (presetIndex: number): BoardSizePreset =>
+const getPreset = (presetIndex: number) =>
   BOARD_SIZE_PRESETS[presetIndex] ?? BOARD_SIZE_PRESETS[1]!;
 
-const createMatchForPreset = (preset: BoardSizePreset) =>
-  createMatch({
-    columns: preset.columns,
-    destructibleTiles: preset.destructibleTiles,
-    neutralAtoms: preset.neutralAtoms,
-    playerCount: 2,
-    rows: preset.rows
-  });
+const getBoardSetupForPreset = (presetIndex: number) =>
+  createBoardSetupFromPreset(getPreset(presetIndex), presetIndex);
+
+const getControllerCount = (controllers: PlayerControllerById) =>
+  Object.keys(controllers).length;
+
+const getControllersForPlayerCount = (
+  controllers: PlayerControllerById,
+  playerCount: number
+): PlayerControllerById => {
+  const next: PlayerControllerById = {};
+
+  for (let index = 1; index <= playerCount; index += 1) {
+    const playerId = `player-${index}` as PlayerId;
+    next[playerId] = controllers[playerId] ?? 'human';
+  }
+
+  return next;
+};
 
 const isNpcTurn = (state: MatchFlowState) =>
   state.match.status === 'playing' &&
   !state.isResolving &&
-  isNpcControlled(state.mode, state.match.activePlayerId);
+  isNpcController(state.controllers, state.match.activePlayerId);
 
 const scheduleNpcMove = (state: MatchFlowState): MatchFlowEffect[] =>
   isNpcTurn(state)
@@ -111,23 +145,39 @@ const scheduleWaveFinish = (
       ]
     : [];
 
-const startGame = (
-  state: MatchFlowState,
-  options: { mode?: GameMode; presetIndex?: number } = {}
-) => {
-  const presetIndex = options.presetIndex ?? state.presetIndex;
-  const preset = getPreset(presetIndex);
+const startGame = (state: MatchFlowState, options: CreateMatchOptions = {}) => {
+  const presetIndex =
+    options.presetIndex === undefined ? state.presetIndex : options.presetIndex;
+  const boardSetup =
+    options.boardSetup ??
+    (typeof presetIndex === 'number'
+      ? getBoardSetupForPreset(presetIndex)
+      : state.boardSetup);
+  const mode = options.mode ?? state.mode;
+  const playerCount =
+    options.playerCount ??
+    (options.controllers
+      ? getControllerCount(options.controllers)
+      : undefined) ??
+    state.playerCount;
+  const controllers = getControllersForPlayerCount(
+    options.controllers ?? getDefaultControllers(mode, playerCount),
+    playerCount
+  );
 
   const next: MatchFlowState = {
     ...state,
+    boardSetup,
+    controllers,
     currentWave: null,
-    cursorTile: getInitialCursor(preset),
+    cursorTile: getInitialCursor(boardSetup),
     hoveredTile: null,
     illegalTile: null,
     isResolving: false,
-    match: createMatchForPreset(preset),
-    mode: options.mode ?? state.mode,
+    match: createMatchFromBoardSetup(boardSetup, { playerCount }),
+    mode,
     playback: null,
+    playerCount,
     presetIndex,
     runId: state.runId + 1
   };
@@ -306,20 +356,33 @@ const advancePlayback = (
 };
 
 export const createMatchFlowState = ({
+  boardSetup,
+  controllers,
   mode = 'npc',
+  playerCount,
   presetIndex = 1
 }: CreateMatchOptions = {}): MatchFlowState => {
-  const preset = getPreset(presetIndex);
+  const setup = boardSetup ?? getBoardSetupForPreset(presetIndex ?? 1);
+  const count =
+    playerCount ??
+    (controllers ? Math.max(2, getControllerCount(controllers)) : 2);
+  const controllerState = getControllersForPlayerCount(
+    controllers ?? getDefaultControllers(mode, count),
+    count
+  );
 
   return {
+    boardSetup: setup,
+    controllers: controllerState,
     currentWave: null,
-    cursorTile: getInitialCursor(preset),
+    cursorTile: getInitialCursor(setup),
     hoveredTile: null,
     illegalTile: null,
     isResolving: false,
-    match: createMatchForPreset(preset),
+    match: createMatchFromBoardSetup(setup, { playerCount: count }),
     mode,
     playback: null,
+    playerCount: count,
     presetIndex,
     runId: 0
   };
@@ -375,7 +438,10 @@ export const updateMatchFlow = (
       return startGame(state, { mode: event.mode });
     case 'start-match':
       return startGame(state, {
+        boardSetup: event.boardSetup,
+        controllers: event.controllers,
         mode: event.mode,
+        playerCount: event.playerCount,
         presetIndex: event.presetIndex
       });
   }

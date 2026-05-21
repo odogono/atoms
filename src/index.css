@@ -18,3 +18,59 @@ body {
     background-color 0.3s ease,
     color 0.3s ease;
 }
+
+@keyframes board-setup-carousel-enter-next {
+  from {
+    transform: translateX(100%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes board-setup-carousel-exit-next {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes board-setup-carousel-enter-previous {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes board-setup-carousel-exit-previous {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.board-setup-carousel-enter-next {
+  animation: board-setup-carousel-enter-next 260ms ease-out both;
+}
+
+.board-setup-carousel-exit-next {
+  animation: board-setup-carousel-exit-next 260ms ease-out both;
+}
+
+.board-setup-carousel-enter-previous {
+  animation: board-setup-carousel-enter-previous 260ms ease-out both;
+}
+
+.board-setup-carousel-exit-previous {
+  animation: board-setup-carousel-exit-previous 260ms ease-out both;
+}

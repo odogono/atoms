@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { createBlankBoardSetup } from '../atoms-board-setup';
 import {
   MATCH_TIMINGS,
   createMatchFlowState,
@@ -183,6 +184,62 @@ describe('atoms match flow', () => {
     expect(started.state.match.turnNumber).toBe(0);
     expect(staleNpc.state).toEqual(started.state);
     expect(staleNpc.effects).toEqual([]);
+  });
+
+  it('starts a new match from a custom Board Setup', () => {
+    const setup = createBlankBoardSetup({
+      columns: 4,
+      holes: [{ column: 1, row: 1 }],
+      id: 'custom-a',
+      name: 'Custom A',
+      rows: 4
+    });
+
+    const started = updateMatchFlow(createMatchFlowState(), {
+      boardSetup: setup,
+      controllers: { 'player-1': 'human', 'player-2': 'human' },
+      playerCount: 2,
+      presetIndex: null,
+      type: 'start-match'
+    });
+
+    expect(started.state.boardSetup).toEqual(setup);
+    expect(started.state.presetIndex).toBe(null);
+    expect(started.state.match.rows).toBe(4);
+    expect(started.state.match.columns).toBe(4);
+    expect(() => getTile(started.state.match, { column: 1, row: 1 })).toThrow(
+      'Position is a hole: 1,1'
+    );
+  });
+
+  it('schedules NPC turns from per-player controllers with 2 to 4 Players', () => {
+    const flow = createMatchFlowState({
+      controllers: {
+        'player-1': 'human',
+        'player-2': 'npc',
+        'player-3': 'human',
+        'player-4': 'human'
+      },
+      playerCount: 4,
+      presetIndex: 0
+    });
+
+    const playerMove = updateMatchFlow(flow, {
+      position: { column: 0, row: 0 },
+      type: 'attempt-move'
+    });
+
+    expect(playerMove.state.match.players).toHaveLength(4);
+    expect(playerMove.state.match.activePlayerId).toBe('player-2');
+    expect(playerMove.effects).toEqual([
+      {
+        delayMs: MATCH_TIMINGS.npcDelayMs,
+        event: {
+          runId: playerMove.state.runId,
+          type: 'execute-npc-move'
+        }
+      }
+    ]);
   });
 
   it('does not schedule NPC work after terminal Victory or Stalemate', () => {

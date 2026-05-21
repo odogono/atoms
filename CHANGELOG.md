@@ -14,6 +14,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Softened the board camera so Tile focus drifts subtly instead of fully recentering, and disables Tile-following drift for reduced-motion users.
 
+## [0.4.2] - 2026-05-21
+
+### Added
+
+- Added a 3D Board Setup carousel to the New Match dialog with wrap-around navigation, slide animation, and reduced-motion support.
+- Added visual-only board preview support to the shared 3D board renderer.
+
+### Changed
+
+- Replaced player count and Player Control dropdowns with segmented controls.
+
 ## [0.4.1]
 
 ### Added

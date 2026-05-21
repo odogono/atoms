@@ -6,6 +6,12 @@ export type CursorDirection =
   | 'ArrowRight'
   | 'ArrowUp';
 
+export const isCursorDirection = (key: string): key is CursorDirection =>
+  key === 'ArrowUp' ||
+  key === 'ArrowRight' ||
+  key === 'ArrowDown' ||
+  key === 'ArrowLeft';
+
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
 
