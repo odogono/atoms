@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 
 import { GameBoard } from '@components/game-board';
+import { useTheme } from '@contexts/theme/context';
 import {
   applyBoardSetupTool,
   createBoardSetupId,
@@ -42,7 +43,6 @@ import {
   isCursorDirection,
   moveCursor
 } from '@helpers/atoms-cursor';
-import { useTheme } from '@contexts/theme/context';
 import { type Position } from '@helpers/atoms-match-rules';
 import { cn } from '@helpers/tailwind';
 
@@ -86,7 +86,6 @@ const BOARD_SETUP_TOOLS: Array<{
     tool: 'destructible'
   }
 ];
-
 
 const getOutOfBoundsContentCount = (
   setup: BoardSetup,
@@ -259,7 +258,13 @@ export const BoardSetupsScreen = ({
     setSelectedId(next.id);
     setDraft(next);
     setMessage('Board Setup saved.');
-  }, [draft, onSaveBoardSetups, requireValidDraft, selectedIsBuiltIn, selectedSetup]);
+  }, [
+    draft,
+    onSaveBoardSetups,
+    requireValidDraft,
+    selectedIsBuiltIn,
+    selectedSetup
+  ]);
 
   const duplicateSelected = useCallback(() => {
     if (!requireValidDraft()) {
@@ -340,7 +345,13 @@ export const BoardSetupsScreen = ({
       onSaveBoardSetups(setups => upsertSetup(setups, draft));
     }
     onUseInNewMatch(draft.id);
-  }, [draft, onSaveBoardSetups, onUseInNewMatch, requireValidDraft, selectedIsBuiltIn]);
+  }, [
+    draft,
+    onSaveBoardSetups,
+    onUseInNewMatch,
+    requireValidDraft,
+    selectedIsBuiltIn
+  ]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {

@@ -262,7 +262,11 @@ const BoardTile = ({
     tileEmissiveIntensity = 0;
   }
 
-  const tileEmissive = isHovered ? '#facc15' : isCursor || isLegal ? activePlayerColor : '#000000';
+  const tileEmissive = isHovered
+    ? '#facc15'
+    : isCursor || isLegal
+      ? activePlayerColor
+      : '#000000';
 
   return (
     <>

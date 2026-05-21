@@ -17,6 +17,8 @@ import {
   Play,
   Plus,
   RotateCcw,
+  Target,
+  Trophy,
   X
 } from 'lucide-react';
 
@@ -30,10 +32,27 @@ import {
   type BoardSetup
 } from '@helpers/atoms-board-setup';
 import {
+  getInitialCursor,
   isCursorDirection,
+  moveCursor,
   type CursorDirection
 } from '@helpers/atoms-cursor';
 import {
+  BUILT_IN_GOLF_COURSE,
+  advanceGolfHole,
+  advanceGolfPlayback,
+  attemptGolfStroke,
+  createGolfFlowState,
+  finishGolfWave,
+  getRemainingGolfTargetAtoms,
+  loadGolfBestStrokes,
+  recordGolfBestStroke,
+  retryGolfHole,
+  type GolfCourse,
+  type GolfFlowState
+} from '@helpers/atoms-golf';
+import {
+  MATCH_TIMINGS,
   createMatchFlowState,
   updateMatchFlow,
   type MatchFlowEffect,
@@ -59,7 +78,6 @@ import {
   type PlayerControllerById
 } from '@helpers/atoms-mode';
 import { cn } from '@helpers/tailwind';
-
 
 const isInteractiveTarget = (target: EventTarget | null) => {
   if (!target || !('tagName' in target)) {
@@ -102,11 +120,14 @@ const getStatusText = (
 };
 
 type DialogState = 'closed' | 'confirm-abandon' | 'setup';
+type PlayKind = 'classic' | 'golf';
 
 type MatchSetupDraft = {
   boardSetupId: string;
   controllers: PlayerControllerById;
+  golfHoleIndex: number;
   playerCount: number;
+  playKind: PlayKind;
 };
 
 const iconClassName = 'h-4 w-4';
@@ -120,6 +141,13 @@ const playerControllerOptions: Array<{
 }> = [
   { label: 'Human', value: 'human' },
   { label: 'NPC', value: 'npc' }
+];
+const playKindOptions: Array<{
+  label: string;
+  value: PlayKind;
+}> = [
+  { label: 'Classic', value: 'classic' },
+  { label: 'Golf', value: 'golf' }
 ];
 
 const getMetricForPlayer = (metric: MatchMetric, playerId: PlayerId) =>
@@ -193,6 +221,7 @@ const ModalShell = ({
 const MatchSetupDialog = ({
   boardSetups,
   draft,
+  golfCourse,
   onCancel,
   onChange,
   onManageBoards,
@@ -200,6 +229,7 @@ const MatchSetupDialog = ({
 }: {
   boardSetups: BoardSetup[];
   draft: MatchSetupDraft;
+  golfCourse: GolfCourse;
   onCancel: () => void;
   onChange: (draft: MatchSetupDraft) => void;
   onManageBoards: () => void;
@@ -235,62 +265,112 @@ const MatchSetupDialog = ({
     >
       <div className="mt-5 space-y-5">
         <div className="space-y-2">
-          <p className="text-sm font-medium">Board Setup</p>
-          <BoardSetupCarousel
-            boardSetups={boardSetups}
-            onSelect={boardSetupId => {
-              onChange({
-                ...draft,
-                boardSetupId
-              });
-            }}
-            selectedBoardSetupId={draft.boardSetupId}
-          />
-          <button
-            className="text-sm font-semibold text-slate-600 underline-offset-4 hover:underline dark:text-slate-300"
-            onClick={onManageBoards}
-            type="button"
-          >
-            Manage Board Setups
-          </button>
-        </div>
-
-        <div className="space-y-2">
-          <p className="text-sm font-medium">Players</p>
+          <p className="text-sm font-medium">Play Type</p>
           <SegmentedControl
-            ariaLabel="Player count"
-            onChange={count => {
-              updatePlayerCount(count);
+            ariaLabel="Play type"
+            onChange={playKind => {
+              onChange({ ...draft, playKind });
             }}
-            options={playerCountOptions}
-            value={draft.playerCount}
+            options={playKindOptions}
+            value={draft.playKind}
           />
         </div>
 
-        <div className="space-y-2">
-          <p className="text-sm font-medium">Player Control</p>
-          <div className="grid gap-2">
-            {Array.from({ length: draft.playerCount }, (_value, index) => {
-              const playerId = `player-${index + 1}` as PlayerId;
-              return (
-                <div
-                  className="grid items-center gap-2 text-sm sm:grid-cols-[minmax(0,1fr)_12rem]"
-                  key={playerId}
+        {draft.playKind === 'golf' ? (
+          <>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="grid gap-2 text-sm font-medium">
+                Course
+                <select
+                  className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  disabled
+                  value={golfCourse.id}
                 >
-                  <span className="font-medium">{`Player ${index + 1}`}</span>
-                  <SegmentedControl
-                    ariaLabel={`Player ${index + 1} controller`}
-                    onChange={controller => {
-                      updateController(playerId, controller);
-                    }}
-                    options={playerControllerOptions}
-                    value={draft.controllers[playerId] ?? 'human'}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        </div>
+                  <option value={golfCourse.id}>{golfCourse.name}</option>
+                </select>
+              </label>
+              <label className="grid gap-2 text-sm font-medium">
+                Start Hole
+                <select
+                  className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  onChange={event => {
+                    onChange({
+                      ...draft,
+                      golfHoleIndex: Number(event.target.value)
+                    });
+                  }}
+                  value={draft.golfHoleIndex}
+                >
+                  {golfCourse.holes.map((hole, index) => (
+                    <option key={hole.id} value={index}>
+                      {`${index + 1}. ${hole.name}`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Board Setup</p>
+              <BoardSetupCarousel
+                boardSetups={boardSetups}
+                onSelect={boardSetupId => {
+                  onChange({
+                    ...draft,
+                    boardSetupId
+                  });
+                }}
+                selectedBoardSetupId={draft.boardSetupId}
+              />
+              <button
+                className="text-sm font-semibold text-slate-600 underline-offset-4 hover:underline dark:text-slate-300"
+                onClick={onManageBoards}
+                type="button"
+              >
+                Manage Board Setups
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Players</p>
+              <SegmentedControl
+                ariaLabel="Player count"
+                onChange={count => {
+                  updatePlayerCount(count);
+                }}
+                options={playerCountOptions}
+                value={draft.playerCount}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Player Control</p>
+              <div className="grid gap-2">
+                {Array.from({ length: draft.playerCount }, (_value, index) => {
+                  const playerId = `player-${index + 1}` as PlayerId;
+                  return (
+                    <div
+                      className="grid items-center gap-2 text-sm sm:grid-cols-[minmax(0,1fr)_12rem]"
+                      key={playerId}
+                    >
+                      <span className="font-medium">{`Player ${index + 1}`}</span>
+                      <SegmentedControl
+                        ariaLabel={`Player ${index + 1} controller`}
+                        onChange={controller => {
+                          updateController(playerId, controller);
+                        }}
+                        options={playerControllerOptions}
+                        value={draft.controllers[playerId] ?? 'human'}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
 
         <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
           <button
@@ -306,7 +386,7 @@ const MatchSetupDialog = ({
             type="button"
           >
             <Play aria-hidden className={iconClassName} />
-            Start Match
+            {draft.playKind === 'golf' ? 'Start Golf' : 'Start Match'}
           </button>
         </div>
       </div>
@@ -476,6 +556,165 @@ const PlayerPanel = ({
   </div>
 );
 
+const GolfScorePanel = ({
+  golfFlow,
+  onNewMatch,
+  onNextHole,
+  onRetry
+}: {
+  golfFlow: GolfFlowState;
+  onNewMatch: () => void;
+  onNextHole: () => void;
+  onRetry: () => void;
+}) => {
+  const hole = golfFlow.course.holes[golfFlow.holeIndex]!;
+  const remainingTargets = getRemainingGolfTargetAtoms(golfFlow.match);
+  const best = golfFlow.bestStrokesByHole[hole.id];
+  const isFinalHole = golfFlow.holeIndex === golfFlow.course.holes.length - 1;
+  const courseComplete = golfFlow.status === 'solved' && isFinalHole;
+  const totalStrokes = Object.values(golfFlow.strokesByHole).reduce(
+    (total, strokes) => total + strokes,
+    0
+  );
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="text-xs font-semibold tracking-[0.18em] text-slate-500 uppercase dark:text-slate-400">
+          Golf
+        </p>
+        <h1 className="mt-1 text-2xl font-semibold text-slate-950 dark:text-white">
+          {golfFlow.course.name}
+        </h1>
+      </div>
+
+      <div className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800">
+        <div className="flex items-start gap-3">
+          <span
+            aria-hidden
+            className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-slate-950 text-white dark:bg-white dark:text-slate-950"
+          >
+            <Target className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-slate-500 uppercase dark:text-slate-400">
+              Hole {golfFlow.holeIndex + 1} of {golfFlow.course.holes.length}
+            </p>
+            <p className="mt-1 text-sm font-semibold text-slate-950 dark:text-white">
+              {hole.name}
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          <div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Strokes
+            </p>
+            <p className="font-semibold tabular-nums">{golfFlow.strokes}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Best</p>
+            <p className="font-semibold tabular-nums">{best ?? '-'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Targets
+            </p>
+            <p className="font-semibold tabular-nums">{remainingTargets}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Status</p>
+            <p className="font-semibold capitalize">{golfFlow.status}</p>
+          </div>
+        </div>
+      </div>
+
+      {golfFlow.status !== 'playing' ? (
+        <div className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800">
+          <div className="flex items-start gap-3">
+            <span
+              aria-hidden
+              className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-300 text-slate-700 dark:border-slate-700 dark:text-slate-200"
+            >
+              <Trophy className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">
+                {golfFlow.status === 'solved'
+                  ? `${golfFlow.strokes} stroke${golfFlow.strokes === 1 ? '' : 's'}`
+                  : 'Hole failed'}
+              </p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                {golfFlow.status === 'solved'
+                  ? 'Score recorded for this hole.'
+                  : 'Restart this hole from its opening board.'}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {courseComplete ? (
+        <div className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800">
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase dark:text-slate-400">
+              Course Summary
+            </p>
+            <p className="mt-1 text-lg font-semibold tabular-nums">
+              {totalStrokes} strokes
+            </p>
+          </div>
+          <div className="grid gap-1 text-xs text-slate-600 dark:text-slate-300">
+            {golfFlow.course.holes.map((summaryHole, index) => (
+              <div
+                className="flex items-center justify-between gap-3"
+                key={summaryHole.id}
+              >
+                <span className="truncate">
+                  {index + 1}. {summaryHole.name}
+                </span>
+                <span className="shrink-0 tabular-nums">
+                  {golfFlow.strokesByHole[summaryHole.id] ?? '-'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="grid gap-2 border-t border-slate-200 pt-4 dark:border-slate-800">
+        {golfFlow.status === 'solved' && !isFinalHole ? (
+          <button
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+            onClick={onNextHole}
+            type="button"
+          >
+            <Play aria-hidden className={iconClassName} />
+            Next Hole
+          </button>
+        ) : null}
+        <button
+          className="inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+          onClick={onRetry}
+          type="button"
+        >
+          <RotateCcw aria-hidden className={iconClassName} />
+          Restart Hole
+        </button>
+        <button
+          className="inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+          onClick={onNewMatch}
+          type="button"
+        >
+          <Plus aria-hidden className={iconClassName} />
+          New Match
+        </button>
+      </div>
+    </div>
+  );
+};
+
 type MainProps = {
   onManageBoardSetups: () => void;
   onPendingBoardSetupConsumed: () => void;
@@ -495,15 +734,35 @@ export const Main = ({
     () => [...builtInBoardSetups, ...savedBoardSetups],
     [builtInBoardSetups, savedBoardSetups]
   );
+  const [playKind, setPlayKind] = useState<PlayKind>('classic');
+  const [golfFlow, setGolfFlow] = useState(() =>
+    createGolfFlowState({
+      bestStrokesByHole: loadGolfBestStrokes(
+        window.localStorage,
+        BUILT_IN_GOLF_COURSE.id
+      )
+    })
+  );
+  const golfFlowRef = useRef(golfFlow);
+  const [golfCursorTile, setGolfCursorTile] = useState(() =>
+    getInitialCursor(golfFlow.match)
+  );
+  const [golfHoveredTile, setGolfHoveredTile] = useState<Position | null>(null);
   const [matchFlow, setMatchFlow] = useState(() => createMatchFlowState());
   const matchFlowRef = useRef(matchFlow);
   const dispatchRef = useRef<(event: MatchFlowEvent) => void>(() => undefined);
+  const golfPlaybackSchedulerRef = useRef<
+    (runId: number, waveIndex: number) => void
+  >(() => undefined);
   const timeoutIdsRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  const golfTimeoutIdsRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const [dialogState, setDialogState] = useState<DialogState>('closed');
   const [setupDraft, setSetupDraft] = useState<MatchSetupDraft>(() => ({
     boardSetupId: matchFlow.boardSetup.id,
     controllers: matchFlow.controllers,
-    playerCount: matchFlow.playerCount
+    golfHoleIndex: golfFlow.holeIndex,
+    playerCount: matchFlow.playerCount,
+    playKind
   }));
 
   const scheduleEffects = useCallback((effects: MatchFlowEffect[]) => {
@@ -517,6 +776,26 @@ export const Main = ({
       timeoutIdsRef.current.push(timeoutId);
     }
   }, []);
+
+  const clearGolfTimeouts = useCallback(() => {
+    for (const timeoutId of golfTimeoutIdsRef.current) {
+      clearTimeout(timeoutId);
+    }
+    golfTimeoutIdsRef.current = [];
+  }, []);
+
+  const scheduleGolfTimeout = useCallback(
+    (callback: () => void, delayMs: number) => {
+      const timeoutId = setTimeout(() => {
+        golfTimeoutIdsRef.current = golfTimeoutIdsRef.current.filter(
+          candidate => candidate !== timeoutId
+        );
+        callback();
+      }, delayMs);
+      golfTimeoutIdsRef.current.push(timeoutId);
+    },
+    []
+  );
 
   const dispatch = useCallback(
     (event: MatchFlowEvent) => {
@@ -538,8 +817,9 @@ export const Main = ({
         clearTimeout(timeoutId);
       }
       timeoutIdsRef.current = [];
+      clearGolfTimeouts();
     },
-    []
+    [clearGolfTimeouts]
   );
 
   const {
@@ -575,6 +855,13 @@ export const Main = ({
     ).length;
     return `${match.players.length} Players, ${npcCount} NPC`;
   }, [match.players, matchFlow.controllers]);
+  const isGolf = playKind === 'golf';
+  const displayMatch = isGolf ? golfFlow.match : match;
+  const displayCurrentWave = isGolf ? golfFlow.currentWave : currentWave;
+  const displayCursorTile = isGolf ? golfCursorTile : cursorTile;
+  const displayHoveredTile = isGolf ? golfHoveredTile : hoveredTile;
+  const displayIllegalTile = isGolf ? golfFlow.illegalTile : illegalTile;
+  const displayIsResolving = isGolf ? golfFlow.isResolving : isResolving;
 
   const resetGame = useCallback(() => {
     dispatch({ type: 'reset' });
@@ -582,13 +869,16 @@ export const Main = ({
 
   const openSetup = useCallback(() => {
     const current = matchFlowRef.current;
+    const currentGolf = golfFlowRef.current;
     setSetupDraft({
       boardSetupId: current.boardSetup.id,
       controllers: current.controllers,
-      playerCount: current.playerCount
+      golfHoleIndex: currentGolf.holeIndex,
+      playerCount: current.playerCount,
+      playKind
     });
     setDialogState('setup');
-  }, []);
+  }, [playKind]);
 
   const openAbandonConfirmation = useCallback(() => {
     setDialogState('confirm-abandon');
@@ -601,6 +891,25 @@ export const Main = ({
   }, []);
 
   const startMatch = useCallback(() => {
+    if (setupDraft.playKind === 'golf') {
+      const nextGolf = createGolfFlowState({
+        bestStrokesByHole: loadGolfBestStrokes(
+          window.localStorage,
+          BUILT_IN_GOLF_COURSE.id
+        ),
+        course: BUILT_IN_GOLF_COURSE,
+        holeIndex: setupDraft.golfHoleIndex
+      });
+      clearGolfTimeouts();
+      setGolfFlow(nextGolf);
+      golfFlowRef.current = nextGolf;
+      setGolfCursorTile(getInitialCursor(nextGolf.match));
+      setGolfHoveredTile(null);
+      setPlayKind('golf');
+      setDialogState('closed');
+      return;
+    }
+
     const boardSetup =
       allBoardSetups.find(setup => setup.id === setupDraft.boardSetupId) ??
       allBoardSetups[0]!;
@@ -615,8 +924,9 @@ export const Main = ({
       presetIndex,
       type: 'start-match'
     });
+    setPlayKind('classic');
     setDialogState('closed');
-  }, [allBoardSetups, dispatch, setupDraft]);
+  }, [allBoardSetups, clearGolfTimeouts, dispatch, setupDraft]);
 
   useEffect(() => {
     if (!pendingBoardSetupId) {
@@ -635,24 +945,132 @@ export const Main = ({
     setSetupDraft({
       boardSetupId: setup.id,
       controllers: current.controllers,
-      playerCount: current.playerCount
+      golfHoleIndex: golfFlowRef.current.holeIndex,
+      playerCount: current.playerCount,
+      playKind: 'classic'
     });
     setDialogState('setup');
     onPendingBoardSetupConsumed();
   }, [allBoardSetups, onPendingBoardSetupConsumed, pendingBoardSetupId]);
 
+  const saveSolvedGolfState = useCallback((next: GolfFlowState) => {
+    if (next.status !== 'solved') {
+      return next;
+    }
+
+    const hole = next.course.holes[next.holeIndex]!;
+    const bestStrokesByHole = recordGolfBestStroke(
+      window.localStorage,
+      next.course.id,
+      hole.id,
+      next.strokes
+    );
+
+    return {
+      ...next,
+      bestStrokesByHole
+    };
+  }, []);
+
+  const scheduleGolfWaveFinish = useCallback(
+    (runId: number, waveIndex: number) => {
+      scheduleGolfTimeout(() => {
+        setGolfFlow(current => {
+          const next = finishGolfWave(current, runId, waveIndex);
+          golfFlowRef.current = next;
+          return next;
+        });
+
+        scheduleGolfTimeout(() => {
+          setGolfFlow(current => {
+            const advanced = advanceGolfPlayback(current, runId, waveIndex);
+            const next =
+              advanced.isResolving || advanced.status !== 'solved'
+                ? advanced
+                : saveSolvedGolfState(advanced);
+            golfFlowRef.current = next;
+
+            if (next.isResolving && next.currentWave) {
+              golfPlaybackSchedulerRef.current(runId, waveIndex + 1);
+            }
+
+            return next;
+          });
+        }, MATCH_TIMINGS.playbackPauseMs);
+      }, MATCH_TIMINGS.waveDurationMs);
+    },
+    [saveSolvedGolfState, scheduleGolfTimeout]
+  );
+
+  useEffect(() => {
+    golfPlaybackSchedulerRef.current = scheduleGolfWaveFinish;
+  }, [scheduleGolfWaveFinish]);
+
+  const handleGolfStroke = useCallback(
+    (position: Position) => {
+      setGolfCursorTile(position);
+      setGolfFlow(current => {
+        if (current.isResolving || current.status !== 'playing') {
+          return current;
+        }
+
+        const attempted = attemptGolfStroke(current, position);
+        const next =
+          attempted.isResolving || attempted.status !== 'solved'
+            ? attempted
+            : saveSolvedGolfState(attempted);
+        golfFlowRef.current = next;
+        if (next.isResolving && next.currentWave) {
+          golfPlaybackSchedulerRef.current(next.runId, 0);
+        }
+        return next;
+      });
+    },
+    [saveSolvedGolfState]
+  );
+
+  const transitionGolfHole = useCallback(
+    (next: GolfFlowState) => {
+      clearGolfTimeouts();
+      setGolfFlow(next);
+      golfFlowRef.current = next;
+      setGolfCursorTile(getInitialCursor(next.match));
+      setGolfHoveredTile(null);
+    },
+    [clearGolfTimeouts]
+  );
+
+  const restartGolfHole = useCallback(() => {
+    transitionGolfHole(retryGolfHole(golfFlowRef.current));
+  }, [transitionGolfHole]);
+
+  const goToNextGolfHole = useCallback(() => {
+    transitionGolfHole(advanceGolfHole(golfFlowRef.current));
+  }, [transitionGolfHole]);
+
   const handleTileClick = useCallback(
     (position: Position) => {
+      if (playKind === 'golf') {
+        handleGolfStroke(position);
+        return;
+      }
+
       dispatch({ position, type: 'attempt-move' });
     },
-    [dispatch]
+    [dispatch, handleGolfStroke, playKind]
   );
 
   const handleTileHover = useCallback(
     (position: Position | null) => {
+      if (playKind === 'golf') {
+        setGolfCursorTile(current => position ?? current);
+        setGolfHoveredTile(position);
+        return;
+      }
+
       dispatch({ position, type: 'hover-tile' });
     },
-    [dispatch]
+    [dispatch, playKind]
   );
 
   useEffect(() => {
@@ -667,12 +1085,30 @@ export const Main = ({
 
       if (isCursorDirection(event.key)) {
         event.preventDefault();
+        if (playKind === 'golf') {
+          const current = golfFlowRef.current;
+          setGolfCursorTile(cursor =>
+            moveCursor(
+              { columns: current.match.columns, rows: current.match.rows },
+              cursor,
+              event.key as CursorDirection
+            )
+          );
+          setGolfHoveredTile(null);
+          return;
+        }
+
         dispatch({ direction: event.key, type: 'move-cursor' });
         return;
       }
 
       if (event.code === 'Space' || event.key === ' ') {
         event.preventDefault();
+        if (playKind === 'golf') {
+          handleGolfStroke(golfCursorTile);
+          return;
+        }
+
         dispatch({
           position: matchFlowRef.current.cursorTile,
           type: 'attempt-move'
@@ -684,7 +1120,7 @@ export const Main = ({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [dialogState, dispatch]);
+  }, [dialogState, dispatch, golfCursorTile, handleGolfStroke, playKind]);
 
   return (
     <>
@@ -699,160 +1135,181 @@ export const Main = ({
         <div className="mx-auto grid min-h-[calc(100vh-2rem)] max-w-7xl gap-4 lg:h-[calc(100vh-2rem)] lg:grid-cols-[22rem_minmax(0,1fr)]">
           <section className="min-h-0 rounded-lg border border-slate-300 bg-white/85 p-4 shadow-sm lg:overflow-y-auto dark:border-slate-700 dark:bg-slate-900/85">
             <div className="space-y-5">
-              <div>
-                <p className="text-xs font-semibold tracking-[0.18em] text-slate-500 uppercase dark:text-slate-400">
-                  Atoms
-                </p>
-                <h1 className="mt-1 text-2xl font-semibold text-slate-950 dark:text-white">
-                  Chain the board
-                </h1>
-              </div>
-
-              <div className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800">
-                <div className="flex items-start gap-3">
-                  <span
-                    aria-hidden
-                    className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-slate-950 text-white dark:bg-white dark:text-slate-950"
-                  >
-                    <Activity className="h-4 w-4" />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold text-slate-500 uppercase dark:text-slate-400">
-                      Status
+              {isGolf ? (
+                <GolfScorePanel
+                  golfFlow={golfFlow}
+                  onNewMatch={openSetup}
+                  onNextHole={goToNextGolfHole}
+                  onRetry={restartGolfHole}
+                />
+              ) : (
+                <>
+                  <div>
+                    <p className="text-xs font-semibold tracking-[0.18em] text-slate-500 uppercase dark:text-slate-400">
+                      Atoms
                     </p>
-                    <p className="mt-1 text-sm font-semibold text-slate-950 dark:text-white">
-                      {getStatusText(
-                        matchFlow.controllers,
-                        winner?.id,
-                        isStalemate,
-                        isResolving,
-                        currentWave,
-                        isNpcTurn,
-                        activePlayer.id
+                    <h1 className="mt-1 text-2xl font-semibold text-slate-950 dark:text-white">
+                      Chain the board
+                    </h1>
+                  </div>
+
+                  <div className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800">
+                    <div className="flex items-start gap-3">
+                      <span
+                        aria-hidden
+                        className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-slate-950 text-white dark:bg-white dark:text-slate-950"
+                      >
+                        <Activity className="h-4 w-4" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-slate-500 uppercase dark:text-slate-400">
+                          Status
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-slate-950 dark:text-white">
+                          {getStatusText(
+                            matchFlow.controllers,
+                            winner?.id,
+                            isStalemate,
+                            isResolving,
+                            currentWave,
+                            isNpcTurn,
+                            activePlayer.id
+                          )}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Players
+                        </p>
+                        <p className="truncate font-semibold">
+                          {controllerSummary}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Board
+                        </p>
+                        <p className="truncate font-semibold">
+                          {`${matchFlow.boardSetup.name} ${match.rows}x${match.columns}`}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Rounds completed
+                        </p>
+                        <p className="font-semibold tabular-nums">
+                          {completedRounds}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Placements
+                        </p>
+                        <p className="font-semibold tabular-nums">
+                          {match.turnNumber}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800">
+                    <MetricBar
+                      formatValue={entry =>
+                        `${entry.value} ${formatPercent(entry.share)}`
+                      }
+                      metric={boardControl}
+                      playersById={playersById}
+                      title="Board Control"
+                    />
+                    <MetricBar
+                      formatValue={entry =>
+                        `${entry.value.toFixed(2)} ${formatPercent(entry.share)}`
+                      }
+                      metric={criticalPressure}
+                      playersById={playersById}
+                      title="Critical Pressure"
+                    />
+                  </div>
+
+                  <div className="grid gap-2 border-t border-slate-200 pt-4 dark:border-slate-800">
+                    {match.players.map(player => (
+                      <PlayerPanel
+                        boardControl={getMetricForPlayer(
+                          boardControl,
+                          player.id
+                        )}
+                        criticalPressure={getMetricForPlayer(
+                          criticalPressure,
+                          player.id
+                        )}
+                        isActive={
+                          match.status === 'playing' &&
+                          player.id === match.activePlayerId
+                        }
+                        key={player.id}
+                        label={getControllerPlayerLabel(
+                          matchFlow.controllers,
+                          player.id
+                        )}
+                        player={player}
+                      />
+                    ))}
+                  </div>
+
+                  <div className="grid gap-2 border-t border-slate-200 pt-4 dark:border-slate-800">
+                    {isTerminal ? (
+                      <button
+                        className="inline-flex items-center justify-center gap-2 rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                        onClick={resetGame}
+                        type="button"
+                      >
+                        <RotateCcw aria-hidden className={iconClassName} />
+                        Rematch
+                      </button>
+                    ) : null}
+                    <button
+                      className={cn(
+                        'inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold transition',
+                        isActiveMatch
+                          ? 'border border-slate-300 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800'
+                          : 'bg-slate-950 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200'
                       )}
-                    </p>
+                      onClick={
+                        isActiveMatch ? openAbandonConfirmation : openSetup
+                      }
+                      type="button"
+                    >
+                      {isActiveMatch ? (
+                        <FlagOff aria-hidden className={iconClassName} />
+                      ) : (
+                        <Plus aria-hidden className={iconClassName} />
+                      )}
+                      {isActiveMatch ? 'Abandon Match' : 'New Match'}
+                    </button>
+                    <button
+                      className="inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                      onClick={onManageBoardSetups}
+                      type="button"
+                    >
+                      Manage Board Setups
+                    </button>
                   </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Players
-                    </p>
-                    <p className="truncate font-semibold">
-                      {controllerSummary}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Board
-                    </p>
-                    <p className="truncate font-semibold">
-                      {`${matchFlow.boardSetup.name} ${match.rows}x${match.columns}`}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Rounds completed
-                    </p>
-                    <p className="font-semibold tabular-nums">
-                      {completedRounds}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Placements
-                    </p>
-                    <p className="font-semibold tabular-nums">
-                      {match.turnNumber}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800">
-                <MetricBar
-                  formatValue={entry =>
-                    `${entry.value} ${formatPercent(entry.share)}`
-                  }
-                  metric={boardControl}
-                  playersById={playersById}
-                  title="Board Control"
-                />
-                <MetricBar
-                  formatValue={entry =>
-                    `${entry.value.toFixed(2)} ${formatPercent(entry.share)}`
-                  }
-                  metric={criticalPressure}
-                  playersById={playersById}
-                  title="Critical Pressure"
-                />
-              </div>
-
-              <div className="grid gap-2 border-t border-slate-200 pt-4 dark:border-slate-800">
-                {match.players.map(player => (
-                  <PlayerPanel
-                    boardControl={getMetricForPlayer(boardControl, player.id)}
-                    criticalPressure={getMetricForPlayer(
-                      criticalPressure,
-                      player.id
-                    )}
-                    isActive={
-                      match.status === 'playing' &&
-                      player.id === match.activePlayerId
-                    }
-                    key={player.id}
-                    label={getControllerPlayerLabel(
-                      matchFlow.controllers,
-                      player.id
-                    )}
-                    player={player}
-                  />
-                ))}
-              </div>
-
-              <div className="grid gap-2 border-t border-slate-200 pt-4 dark:border-slate-800">
-                {isTerminal ? (
-                  <button
-                    className="inline-flex items-center justify-center gap-2 rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
-                    onClick={resetGame}
-                    type="button"
-                  >
-                    <RotateCcw aria-hidden className={iconClassName} />
-                    Rematch
-                  </button>
-                ) : null}
-                <button
-                  className={cn(
-                    'inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold transition',
-                    isActiveMatch
-                      ? 'border border-slate-300 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800'
-                      : 'bg-slate-950 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200'
-                  )}
-                  onClick={isActiveMatch ? openAbandonConfirmation : openSetup}
-                  type="button"
-                >
-                  {isActiveMatch ? (
-                    <FlagOff aria-hidden className={iconClassName} />
-                  ) : (
-                    <Plus aria-hidden className={iconClassName} />
-                  )}
-                  {isActiveMatch ? 'Abandon Match' : 'New Match'}
-                </button>
-                <button
-                  className="inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-                  onClick={onManageBoardSetups}
-                  type="button"
-                >
-                  Manage Board Setups
-                </button>
-              </div>
+                </>
+              )}
             </div>
           </section>
 
           <section
             className="h-[26rem] min-h-0 overflow-hidden rounded-lg border border-slate-300 bg-slate-200 sm:h-[34rem] lg:h-auto dark:border-slate-800 dark:bg-slate-900"
             onPointerLeave={() => {
+              if (isGolf) {
+                setGolfHoveredTile(null);
+                return;
+              }
+
               dispatch({ position: null, type: 'hover-tile' });
             }}
           >
@@ -868,12 +1325,12 @@ export const Main = ({
               }}
             >
               <GameBoard
-                currentWave={currentWave}
-                cursorTile={cursorTile}
-                hoveredTile={hoveredTile}
-                illegalTile={illegalTile}
-                isResolving={isResolving}
-                match={match}
+                currentWave={displayCurrentWave}
+                cursorTile={displayCursorTile}
+                hoveredTile={displayHoveredTile}
+                illegalTile={displayIllegalTile}
+                isResolving={displayIsResolving}
+                match={displayMatch}
                 onTileClick={handleTileClick}
                 onTileHover={handleTileHover}
               />
@@ -892,6 +1349,7 @@ export const Main = ({
         <MatchSetupDialog
           boardSetups={allBoardSetups}
           draft={setupDraft}
+          golfCourse={BUILT_IN_GOLF_COURSE}
           onCancel={closeDialog}
           onChange={setSetupDraft}
           onManageBoards={() => {

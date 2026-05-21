@@ -37,6 +37,19 @@ The policy an NPC uses to choose one legal placement on its turn.
 **Match**:
 One playable session of Atoms, from initial Board through Victory or Stalemate, including selected mode, Board size, turn flow, and Cascade playback.
 
+**Golf Mode**:
+A solo puzzle mode where one Player tries to clear a curated starting Board of opposing Player-owned Atoms in as few Strokes as possible.
+
+**Golf Course**:
+An ordered series of Golf Holes scored as one run.
+
+**Golf Hole**:
+One curated Golf Mode challenge with a full starting Match state and a target of clearing opposing Player-owned Atoms.
+
+**Stroke**:
+One Golf Mode placement and its resulting Cascade.
+_Avoid_: Turn
+
 **Match Snapshot**:
 A serialized Match state that can be saved, loaded, or used as simulation input.
 _Avoid_: Map
@@ -104,6 +117,10 @@ _Avoid_: Dominance, threat level
 - A **Board** contains many **Cells**.
 - A **Cell** is either a **Tile** or a **Hole**.
 - A **Match** contains one active **Board** and its participating **Players**.
+- **Golf Mode** uses normal placement, Capture, Explosion Wave, Cascade, and Stalemate rules.
+- A **Golf Course** contains one or more **Golf Holes**.
+- A **Golf Hole** starts from a complete **Match** state, not from a **Board Setup**.
+- A **Stroke** belongs to one **Golf Hole**.
 - A **Match Snapshot** represents one **Match** at a specific point in turn flow.
 - A **Board Setup** describes the starting **Board** for a **Match**.
 - A **Board Setup Draft** becomes a **Board Setup** when it is valid enough to save or use in a **Match**.
@@ -141,6 +158,9 @@ _Avoid_: Dominance, threat level
 > **Dev:** "Can a Player place an atom on a Destructible Tile?"
 > **Domain expert:** "Yes. A Destructible Tile is still a Tile; only Explosion Waves reduce its Hit Points."
 
+> **Dev:** "Is a Golf Hole just a Board Setup with atoms already on it?"
+> **Domain expert:** "No. A Golf Hole needs Player-owned Atoms, active Player, and scoring context, so it starts from a complete Match state."
+
 ## Flagged ambiguities
 
 - "critical mass" was first described as always four atoms; resolved: **Capacity** is the tile's orthogonal neighbour count, so corners have capacity 2, edges 3, and interior tiles 4.
@@ -153,3 +173,4 @@ _Avoid_: Dominance, threat level
 - "destroyed tile" could have meant an empty Tile; resolved: a destroyed **Destructible Tile** becomes a **Hole**.
 - "Board Setup" previously omitted Destructible Tiles; resolved: **Board Setup** includes every pre-turn Board feature that can exist before a Match starts, including **Destructible Tiles**.
 - "Board Setup" could mean an invalid in-editor shape; resolved: use **Board Setup Draft** for editable intermediate shapes, and reserve **Board Setup** for valid shapes that can be saved or used in a **Match**.
+- "Golf board" could have meant a **Board Setup**; resolved: use **Golf Hole** for a curated puzzle with Player-owned starting Atoms.

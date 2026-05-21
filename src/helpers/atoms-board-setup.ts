@@ -63,7 +63,6 @@ type CreateMatchFromBoardSetupOptions = {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-
 const clonePositions = (positions: readonly Position[]) =>
   positions.map(position => ({ ...position }));
 
@@ -198,7 +197,6 @@ export const createBoardSetupPreviewMatch = (
   return preview;
 };
 
-
 const validateSize = (
   errors: string[],
   axis: 'columns' | 'rows',
@@ -251,9 +249,7 @@ const validateUniquePosition = (
 ) => {
   const key = positionKey(position);
   if (seen.has(key)) {
-    errors.push(
-      `Duplicate ${label} at ${position.row},${position.column}.`
-    );
+    errors.push(`Duplicate ${label} at ${position.row},${position.column}.`);
     return false;
   }
   seen.add(key);
@@ -368,12 +364,18 @@ export const applyBoardSetupTool = (
   switch (edit.tool) {
     case 'empty':
       next.neutralAtoms = withoutPosition(next.neutralAtoms, edit.position);
-      next.destructibleTiles = withoutPosition(next.destructibleTiles, edit.position);
+      next.destructibleTiles = withoutPosition(
+        next.destructibleTiles,
+        edit.position
+      );
       break;
     case 'hole':
       next.holes = [...next.holes, { ...edit.position }];
       next.neutralAtoms = withoutPosition(next.neutralAtoms, edit.position);
-      next.destructibleTiles = withoutPosition(next.destructibleTiles, edit.position);
+      next.destructibleTiles = withoutPosition(
+        next.destructibleTiles,
+        edit.position
+      );
       break;
     case 'neutral': {
       const count = edit.neutralAtomCount ?? 1;
@@ -488,9 +490,7 @@ const parseDestructibleTiles = (value: unknown, errors: string[]) => {
       return [];
     }
     if (!Number.isInteger(entry.hitPoints)) {
-      errors.push(
-        `destructibleTiles[${index}].hitPoints must be an integer.`
-      );
+      errors.push(`destructibleTiles[${index}].hitPoints must be an integer.`);
       return [];
     }
     return [{ ...position, hitPoints: entry.hitPoints as number }];
@@ -527,7 +527,11 @@ const parseBoardSetupDocument = (
   if (!rowsIsInt) {
     errors.push('boardSetup.rows must be an integer.');
   }
-  if (columnsIsInt && rowsIsInt && (Number(source.columns) < 1 || Number(source.rows) < 1)) {
+  if (
+    columnsIsInt &&
+    rowsIsInt &&
+    (Number(source.columns) < 1 || Number(source.rows) < 1)
+  ) {
     errors.push('boardSetup dimensions must be positive integers.');
   }
 
@@ -541,7 +545,12 @@ const parseBoardSetupDocument = (
     rows: Number(source.rows)
   });
 
-  if (columnsIsInt && rowsIsInt && Number(source.columns) > 0 && Number(source.rows) > 0) {
+  if (
+    columnsIsInt &&
+    rowsIsInt &&
+    Number(source.columns) > 0 &&
+    Number(source.rows) > 0
+  ) {
     for (const hole of setup.holes) {
       validatePosition(setup, hole, errors);
     }
@@ -601,8 +610,5 @@ export const saveStoredBoardSetups = (
   storage: Storage,
   setups: readonly BoardSetup[]
 ) => {
-  storage.setItem(
-    BOARD_SETUP_STORAGE_KEY,
-    JSON.stringify(setups)
-  );
+  storage.setItem(BOARD_SETUP_STORAGE_KEY, JSON.stringify(setups));
 };
