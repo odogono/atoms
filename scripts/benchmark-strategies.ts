@@ -10,9 +10,11 @@ import { getMatchStrategy } from '../src/helpers/atoms-match-strategy';
 import {
   createBenchmarkCorpus,
   runStrategyBenchmark,
+  runStrategyBenchmarkLadder,
   runStrategyDuel,
   type StrategyBenchmarkCorpusEntry,
-  type StrategyBenchmarkDuelResult
+  type StrategyBenchmarkDuelResult,
+  type StrategyBenchmarkLadderResult
 } from '../src/helpers/atoms-strategy-benchmark';
 
 type CliOptions = {
@@ -181,7 +183,8 @@ const formatPercent = (value: number) => `${(value * 100).toFixed(1)}%`;
 
 const formatHumanResult = (
   summary: ReturnType<typeof runStrategyBenchmark>,
-  duels: StrategyBenchmarkDuelResult[]
+  duels: StrategyBenchmarkDuelResult[],
+  ladder: StrategyBenchmarkLadderResult[]
 ) =>
   [
     `Challenger: ${summary.challengerId}`,
@@ -197,6 +200,18 @@ const formatHumanResult = (
     `Challenger score rate: ${formatPercent(summary.challengerScoreRate)}`,
     `Result: ${summary.passed ? 'passed' : 'failed'}`,
     '',
+    'Ladder:',
+    ...ladder.map(
+      result =>
+        `${result.summary.challengerId} vs ${result.summary.baselineId}: ${
+          result.summary.passed ? 'passed' : 'failed'
+        } (${formatPercent(
+          result.summary.challengerDecisiveWinRate
+        )} decisive win rate, ${formatPercent(
+          result.summary.challengerScoreRate
+        )} score rate, ${result.summary.draws} draws)`
+    ),
+    '',
     ...duels.map(
       duel =>
         `${duel.fixtureId}: ${duel.outcome} (${duel.reason}, ${duel.turnsSimulated} turns)`
@@ -207,18 +222,23 @@ const main = async () => {
   const options = parseArgs(Bun.argv.slice(2));
   const corpus = [...(await loadSnapshotCorpus()), ...createBenchmarkCorpus()];
   const duels = runSeatSwaps(corpus, options);
+  const ladder = runStrategyBenchmarkLadder(corpus, {
+    maxTurns: options.maxTurns
+  });
   const summary = runStrategyBenchmark(duels, {
     baselineId: options.baselineId,
     challengerId: options.challengerId
   });
 
   if (options.json) {
-    process.stdout.write(`${JSON.stringify({ duels, summary }, null, 2)}\n`);
+    process.stdout.write(
+      `${JSON.stringify({ duels, ladder, summary }, null, 2)}\n`
+    );
   } else {
-    process.stdout.write(`${formatHumanResult(summary, duels)}\n`);
+    process.stdout.write(`${formatHumanResult(summary, duels, ladder)}\n`);
   }
 
-  if (!summary.passed) {
+  if (!summary.passed || ladder.some(result => !result.summary.passed)) {
     process.exit(1);
   }
 };

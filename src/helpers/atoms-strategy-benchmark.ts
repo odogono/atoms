@@ -3,11 +3,17 @@ import {
   cloneGame,
   createMatch,
   placeAtom,
+  type DestructibleTileSetup,
   type MatchState,
-  type PlayerId
+  type NeutralAtomSetup,
+  type PlayerId,
+  type Position
 } from './atoms-match-rules';
 import {
   baselineMatchStrategy,
+  firstLegalMatchStrategy,
+  lowCapacityMatchStrategy,
+  tacticalMatchStrategy,
   type MatchStrategy
 } from './atoms-match-strategy';
 
@@ -19,7 +25,7 @@ const MAX_BENCHMARK_MIDGAME_DEPTH = BENCHMARK_MIDGAME_DEPTHS.at(-1)!;
 export type StrategyBenchmarkCorpusEntry = {
   id: string;
   match: MatchState;
-  source: 'generated-midgame' | 'snapshot';
+  source: 'generated-board-setup' | 'generated-midgame' | 'snapshot';
 };
 
 export type StrategyDuelOutcome = 'baseline-win' | 'challenger-win' | 'draw';
@@ -69,12 +75,55 @@ type StrategyBenchmarkOptions = {
   challengerId: string;
 };
 
-const getPresetMatch = (preset: (typeof BOARD_SIZE_PRESETS)[number]) =>
-  createMatch({
+type BenchmarkBoardSetup = {
+  columns: number;
+  destructibleTiles?: readonly DestructibleTileSetup[];
+  holes?: readonly Position[];
+  id: string;
+  neutralAtoms?: readonly NeutralAtomSetup[];
+  rows: number;
+};
+
+type StrategyBenchmarkLadderOptions = {
+  challenger?: MatchStrategy;
+  maxTurns?: number;
+};
+
+export type StrategyBenchmarkLadderResult = {
+  duels: StrategyBenchmarkDuelResult[];
+  summary: StrategyBenchmarkSummary;
+};
+
+const BENCHMARK_HOLE_BOARD_SETUP = {
+  columns: 4,
+  holes: [
+    { column: 1, row: 1 },
+    { column: 2, row: 2 }
+  ],
+  id: 'holes-4x4',
+  rows: 4
+} as const satisfies BenchmarkBoardSetup;
+
+const getBenchmarkBoardSetups = (): BenchmarkBoardSetup[] => [
+  ...BOARD_SIZE_PRESETS.map((preset, index) => ({
     columns: preset.columns,
+    destructibleTiles:
+      'destructibleTiles' in preset ? preset.destructibleTiles : undefined,
+    id: `preset-${index}`,
     neutralAtoms: 'neutralAtoms' in preset ? preset.neutralAtoms : undefined,
-    playerCount: 2,
     rows: preset.rows
+  })),
+  BENCHMARK_HOLE_BOARD_SETUP
+];
+
+const getBoardSetupMatch = (setup: BenchmarkBoardSetup) =>
+  createMatch({
+    columns: setup.columns,
+    destructibleTiles: setup.destructibleTiles,
+    holes: setup.holes ? [...setup.holes] : undefined,
+    neutralAtoms: setup.neutralAtoms,
+    playerCount: 2,
+    rows: setup.rows
   });
 
 const isBenchmarkMidgameDepth = (turn: number) =>
@@ -83,16 +132,16 @@ const isBenchmarkMidgameDepth = (turn: number) =>
 export const createBenchmarkCorpus = (): StrategyBenchmarkCorpusEntry[] => {
   const corpus: StrategyBenchmarkCorpusEntry[] = [];
 
-  for (const [presetIndex, preset] of BOARD_SIZE_PRESETS.entries()) {
-    let match = getPresetMatch(preset);
+  for (const setup of getBenchmarkBoardSetups()) {
+    let match = getBoardSetupMatch(setup);
 
     for (let turn = 0; turn <= MAX_BENCHMARK_MIDGAME_DEPTH; turn += 1) {
       if (isBenchmarkMidgameDepth(turn)) {
         if (match.status === 'playing') {
           corpus.push({
-            id: `preset-${presetIndex}-turn-${turn}`,
+            id: `${setup.id}-turn-${turn}`,
             match: cloneGame(match),
-            source: 'generated-midgame'
+            source: turn === 0 ? 'generated-board-setup' : 'generated-midgame'
           });
         }
       }
@@ -111,6 +160,13 @@ export const createBenchmarkCorpus = (): StrategyBenchmarkCorpusEntry[] => {
 
   return corpus;
 };
+
+export const getStrategyBenchmarkLadder = (): readonly MatchStrategy[] => [
+  firstLegalMatchStrategy,
+  lowCapacityMatchStrategy,
+  baselineMatchStrategy,
+  tacticalMatchStrategy
+];
 
 const getDuelStrategy = (
   playerId: PlayerId,
@@ -199,6 +255,62 @@ export const runStrategyDuel = (
     winnerId: match.winnerId
   };
 };
+
+const runSeatSwaps = (
+  corpus: StrategyBenchmarkCorpusEntry[],
+  {
+    baseline,
+    challenger,
+    maxTurns
+  }: {
+    baseline: MatchStrategy;
+    challenger: MatchStrategy;
+    maxTurns?: number;
+  }
+) => {
+  const results: StrategyBenchmarkDuelResult[] = [];
+
+  for (const entry of corpus) {
+    for (const challengerPlayerId of ['player-1', 'player-2'] as PlayerId[]) {
+      results.push(
+        runStrategyDuel(entry.match, {
+          baseline,
+          challenger,
+          challengerPlayerId,
+          fixtureId: `${entry.source}:${entry.id}:${challengerPlayerId}`,
+          maxTurns
+        })
+      );
+    }
+  }
+
+  return results;
+};
+
+export const runStrategyBenchmarkLadder = (
+  corpus: StrategyBenchmarkCorpusEntry[],
+  {
+    challenger = tacticalMatchStrategy,
+    maxTurns
+  }: StrategyBenchmarkLadderOptions = {}
+): StrategyBenchmarkLadderResult[] =>
+  getStrategyBenchmarkLadder()
+    .filter(strategy => strategy.id !== challenger.id)
+    .map(baseline => {
+      const duels = runSeatSwaps(corpus, {
+        baseline,
+        challenger,
+        maxTurns
+      });
+
+      return {
+        duels,
+        summary: runStrategyBenchmark(duels, {
+          baselineId: baseline.id,
+          challengerId: challenger.id
+        })
+      };
+    });
 
 export const runStrategyBenchmark = (
   duels: StrategyBenchmarkDuelResult[],

@@ -1,4 +1,10 @@
-import { type MatchState, type Position } from './atoms-match-rules';
+import {
+  getCapacity,
+  getLegalPlacements,
+  getTile,
+  type MatchState,
+  type Position
+} from './atoms-match-rules';
 import {
   chooseBaselineNpcPlacement,
   chooseTacticalNpcPlacement
@@ -16,6 +22,31 @@ export type MatchStrategy = {
   id: MatchStrategyId;
 };
 
+const comparePositions = (a: Position, b: Position) =>
+  a.row - b.row || a.column - b.column;
+
+export const firstLegalMatchStrategy: MatchStrategy = {
+  choosePlacement: match => getLegalPlacements(match)[0] ?? null,
+  id: 'first-legal'
+};
+
+export const lowCapacityMatchStrategy: MatchStrategy = {
+  choosePlacement: match =>
+    getLegalPlacements(match)
+      .map(placement => ({
+        atomCount: getTile(match, placement).atomCount,
+        capacity: getCapacity(match, placement),
+        placement
+      }))
+      .sort(
+        (a, b) =>
+          a.capacity - b.capacity ||
+          b.atomCount - a.atomCount ||
+          comparePositions(a.placement, b.placement)
+      )[0]?.placement ?? null,
+  id: 'low-capacity'
+};
+
 export const baselineMatchStrategy: MatchStrategy = {
   choosePlacement: chooseBaselineNpcPlacement,
   id: 'baseline'
@@ -31,6 +62,8 @@ export const tacticalMatchStrategy: MatchStrategy = {
 export const defaultNpcMatchStrategy = tacticalMatchStrategy;
 
 const MATCH_STRATEGIES = [
+  firstLegalMatchStrategy,
+  lowCapacityMatchStrategy,
   baselineMatchStrategy,
   tacticalMatchStrategy
 ] as const satisfies readonly MatchStrategy[];

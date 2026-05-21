@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'bun:test';
 
-import { createMatch, getLegalPlacements } from '../atoms-match-rules';
+import {
+  createMatch,
+  getLegalPlacements,
+  isDestructibleTile
+} from '../atoms-match-rules';
 import { type MatchStrategy } from '../atoms-match-strategy';
 import {
   createBenchmarkCorpus,
+  getStrategyBenchmarkLadder,
   runStrategyBenchmark,
+  runStrategyBenchmarkLadder,
   runStrategyDuel,
   type StrategyBenchmarkDuelResult
 } from '../atoms-strategy-benchmark';
@@ -67,5 +73,54 @@ describe('atoms strategy benchmark', () => {
     expect(corpus.some(entry => entry.source === 'generated-midgame')).toBe(
       true
     );
+  });
+
+  it('includes neutral, hole, and destructible states in the generated corpus', () => {
+    const corpus = createBenchmarkCorpus();
+
+    expect(
+      corpus.some(entry =>
+        entry.match.cells.some(
+          cell => cell.kind === 'tile' && !cell.ownerId && cell.atomCount > 0
+        )
+      )
+    ).toBe(true);
+    expect(
+      corpus.some(entry => entry.match.cells.some(cell => cell.kind === 'hole'))
+    ).toBe(true);
+    expect(
+      corpus.some(entry =>
+        entry.match.cells.some(cell => isDestructibleTile(cell))
+      )
+    ).toBe(true);
+  });
+
+  it('defines a beginner-to-tactical benchmark ladder', () => {
+    expect(getStrategyBenchmarkLadder().map(strategy => strategy.id)).toEqual([
+      'first-legal',
+      'low-capacity',
+      'baseline',
+      'tactical'
+    ]);
+  });
+
+  it('runs seat-swapped tactical benchmarks against each weaker ladder strategy', () => {
+    const corpus = createBenchmarkCorpus().slice(0, 2);
+    const ladder = runStrategyBenchmarkLadder(corpus, { maxTurns: 20 });
+
+    expect(ladder.map(result => result.summary.baselineId)).toEqual([
+      'first-legal',
+      'low-capacity',
+      'baseline'
+    ]);
+    expect(
+      ladder.every(
+        result =>
+          result.summary.challengerId === 'tactical' &&
+          result.duels.length === corpus.length * 2 &&
+          result.duels.some(duel => duel.challengerPlayerId === 'player-1') &&
+          result.duels.some(duel => duel.challengerPlayerId === 'player-2')
+      )
+    ).toBe(true);
   });
 });
