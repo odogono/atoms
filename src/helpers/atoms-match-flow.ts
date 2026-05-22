@@ -10,13 +10,16 @@ import {
 } from './atoms-cursor';
 import {
   BOARD_SIZE_PRESETS,
+  executeMatchAction,
   isLegalPlacement,
-  placeAtom,
+  isLegalShieldPlacement,
   type ExplosionWave,
+  type MatchAction,
   type PlaceAtomResult,
   type PlayerId,
   type Position,
-  type MatchState as RuleMatchState
+  type MatchState as RuleMatchState,
+  type Ruleset
 } from './atoms-match-rules';
 import { defaultNpcMatchStrategy } from './atoms-match-strategy';
 import {
@@ -57,6 +60,7 @@ export type MatchFlowState = {
 
 export type MatchFlowEvent =
   | { runId: number; type: 'advance-playback'; waveIndex: number }
+  | { action: MatchAction; type: 'attempt-action' }
   | { position: Position; type: 'attempt-move' }
   | { runId: number; type: 'clear-illegal-flash' }
   | { type: 'cycle-mode' }
@@ -73,6 +77,7 @@ export type MatchFlowEvent =
       mode?: GameMode;
       playerCount?: number;
       presetIndex?: number | null;
+      ruleset?: Ruleset;
       type: 'start-match';
     };
 
@@ -92,6 +97,7 @@ type CreateMatchOptions = {
   mode?: GameMode;
   playerCount?: number;
   presetIndex?: number | null;
+  ruleset?: Ruleset;
 };
 
 const getPreset = (presetIndex: number) =>
@@ -174,7 +180,10 @@ const startGame = (state: MatchFlowState, options: CreateMatchOptions = {}) => {
     hoveredTile: null,
     illegalTile: null,
     isResolving: false,
-    match: createMatchFromBoardSetup(boardSetup, { playerCount }),
+    match: createMatchFromBoardSetup(boardSetup, {
+      playerCount,
+      ruleset: options.ruleset ?? state.match.ruleset
+    }),
     mode,
     playback: null,
     playerCount,
@@ -242,6 +251,16 @@ const startMovePlayback = (
 const attemptMove = (
   state: MatchFlowState,
   position: Position
+): MatchFlowUpdate => attemptAction(state, { position, type: 'place-atom' });
+
+const isLegalAction = (match: RuleMatchState, action: MatchAction) =>
+  action.type === 'place-atom'
+    ? isLegalPlacement(match, action.position)
+    : isLegalShieldPlacement(match, action.position);
+
+const attemptAction = (
+  state: MatchFlowState,
+  action: MatchAction
 ): MatchFlowUpdate => {
   if (state.isResolving || state.match.status !== 'playing') {
     return { effects: [], state };
@@ -251,12 +270,12 @@ const attemptMove = (
     return { effects: [], state };
   }
 
-  const positionedState = { ...state, cursorTile: position };
+  const positionedState = { ...state, cursorTile: action.position };
 
-  if (!isLegalPlacement(positionedState.match, position)) {
+  if (!isLegalAction(positionedState.match, action)) {
     const next = {
       ...positionedState,
-      illegalTile: position,
+      illegalTile: action.position,
       runId: positionedState.runId + 1
     };
 
@@ -273,7 +292,7 @@ const attemptMove = (
 
   return startMovePlayback(
     positionedState,
-    placeAtom(positionedState.match, position),
+    executeMatchAction(positionedState.match, action),
     positionedState.runId + 1
   );
 };
@@ -286,14 +305,14 @@ const executeNpcMove = (
     return { effects: [], state };
   }
 
-  const move = defaultNpcMatchStrategy.choosePlacement(state.match);
-  if (!move) {
+  const action = defaultNpcMatchStrategy.chooseAction(state.match);
+  if (!action) {
     return { effects: [], state };
   }
 
   return startMovePlayback(
     state,
-    placeAtom(state.match, move),
+    executeMatchAction(state.match, action),
     state.runId + 1
   );
 };
@@ -360,7 +379,8 @@ export const createMatchFlowState = ({
   controllers,
   mode = 'npc',
   playerCount,
-  presetIndex = 1
+  presetIndex = 1,
+  ruleset
 }: CreateMatchOptions = {}): MatchFlowState => {
   const setup = boardSetup ?? getBoardSetupForPreset(presetIndex ?? 1);
   const count =
@@ -379,7 +399,10 @@ export const createMatchFlowState = ({
     hoveredTile: null,
     illegalTile: null,
     isResolving: false,
-    match: createMatchFromBoardSetup(setup, { playerCount: count }),
+    match: createMatchFromBoardSetup(setup, {
+      playerCount: count,
+      ruleset
+    }),
     mode,
     playback: null,
     playerCount: count,
@@ -395,6 +418,8 @@ export const updateMatchFlow = (
   switch (event.type) {
     case 'advance-playback':
       return advancePlayback(state, event.runId, event.waveIndex);
+    case 'attempt-action':
+      return attemptAction(state, event.action);
     case 'attempt-move':
       return attemptMove(state, event.position);
     case 'clear-illegal-flash':
@@ -442,7 +467,8 @@ export const updateMatchFlow = (
         controllers: event.controllers,
         mode: event.mode,
         playerCount: event.playerCount,
-        presetIndex: event.presetIndex
+        presetIndex: event.presetIndex,
+        ruleset: event.ruleset
       });
   }
 };

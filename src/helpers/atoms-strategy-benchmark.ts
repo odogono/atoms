@@ -2,6 +2,7 @@ import {
   BOARD_SIZE_PRESETS,
   cloneGame,
   createMatch,
+  executeMatchAction,
   placeAtom,
   type DestructibleTileSetup,
   type MatchState,
@@ -221,8 +222,8 @@ export const runStrategyDuel = (
       challenger,
       baseline
     );
-    const placement = strategy.choosePlacement(match);
-    if (!placement) {
+    const action = strategy.chooseAction(match);
+    if (!action) {
       return {
         ...getDrawOutcome(),
         baselineId: baseline.id,
@@ -235,7 +236,7 @@ export const runStrategyDuel = (
       };
     }
 
-    match = placeAtom(match, placement).state;
+    match = executeMatchAction(match, action).state;
     turnsSimulated += 1;
   }
 

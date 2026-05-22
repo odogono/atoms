@@ -6,10 +6,14 @@ import {
   getCapacity,
   getCell,
   getLegalPlacements,
+  getLegalShieldPlacements,
+  getShieldCharges,
   getTile,
   isHole,
   isLegalPlacement,
-  placeAtom
+  isLegalShieldPlacement,
+  placeAtom,
+  shieldTile
 } from '../atoms-match-rules';
 import {
   seedBoard,
@@ -428,6 +432,209 @@ describe('atoms match rules', () => {
 
     expect(match.players).toHaveLength(4);
     expect(getLegalPlacements(match)).toHaveLength(36);
+  });
+
+  it('starts Shielded Atoms with two Shield Charges per player', () => {
+    const match = createMatch({
+      columns: 3,
+      rows: 3,
+      ruleset: 'shielded'
+    });
+
+    expect(match.ruleset).toBe('shielded');
+    expect(getShieldCharges(match, 'player-1')).toBe(2);
+    expect(getShieldCharges(match, 'player-2')).toBe(2);
+  });
+
+  it('spends a Shield Charge and a full turn to shield an owned tile', () => {
+    const match = seedBoard(
+      createMatch({ columns: 3, rows: 3, ruleset: 'shielded' }),
+      [{ column: 0, count: 1, ownerId: 'player-1', row: 0 }]
+    );
+
+    expect(isLegalShieldPlacement(match, { column: 0, row: 0 })).toBe(true);
+    expect(getLegalShieldPlacements(match)).toEqual([{ column: 0, row: 0 }]);
+
+    const result = shieldTile(match, { column: 0, row: 0 });
+
+    expect(result.waves).toEqual([]);
+    expect(result.state.turnNumber).toBe(1);
+    expect(result.state.activePlayerId).toBe('player-2');
+    expect(getShieldCharges(result.state, 'player-1')).toBe(1);
+    expect(getTile(result.state, { column: 0, row: 0 })).toMatchObject({
+      ownerId: 'player-1',
+      shielded: true
+    });
+  });
+
+  it('rejects Shields in Classic, empty tiles, opponent tiles, and already shielded tiles', () => {
+    const classic = seedBoard(createMatch({ columns: 3, rows: 3 }), [
+      { column: 0, count: 1, ownerId: 'player-1', row: 0 }
+    ]);
+    const shielded = seedBoard(
+      createMatch({ columns: 3, rows: 3, ruleset: 'shielded' }),
+      [
+        { column: 0, count: 1, ownerId: 'player-1', row: 0 },
+        { column: 1, count: 2, ownerId: 'player-2', row: 0 }
+      ]
+    );
+    const afterShield = shieldTile(shielded, { column: 0, row: 0 }).state;
+
+    expect(isLegalShieldPlacement(classic, { column: 0, row: 0 })).toBe(false);
+    expect(isLegalShieldPlacement(shielded, { column: 2, row: 0 })).toBe(false);
+    expect(isLegalShieldPlacement(shielded, { column: 1, row: 0 })).toBe(false);
+    expect(
+      isLegalShieldPlacement(
+        { ...afterShield, activePlayerId: 'player-1' },
+        { column: 0, row: 0 }
+      )
+    ).toBe(false);
+  });
+
+  it('blocks one opposing Explosion Wave, breaks the Shield, and prevents Capture', () => {
+    const match = seedBoard(
+      createMatch({ columns: 3, rows: 3, ruleset: 'shielded' }),
+      [
+        { column: 0, count: 1, ownerId: 'player-1', row: 0 },
+        { column: 1, count: 2, ownerId: 'player-2', row: 0 }
+      ]
+    );
+    const shielded = shieldTile(match, { column: 0, row: 0 }).state;
+    const playerTwoTurn = {
+      ...shielded,
+      activePlayerId: 'player-2' as const
+    };
+
+    const result = placeAtom(playerTwoTurn, { column: 1, row: 0 });
+
+    expect(result.waves[0]?.blockedPaths).toEqual([
+      {
+        from: { column: 1, row: 0 },
+        ownerId: 'player-2',
+        to: { column: 0, row: 0 }
+      }
+    ]);
+    expect(result.waves[0]?.paths).not.toContainEqual({
+      from: { column: 1, row: 0 },
+      ownerId: 'player-2',
+      to: { column: 0, row: 0 }
+    });
+    expect(getTile(result.state, { column: 0, row: 0 })).toEqual({
+      atomCount: 1,
+      kind: 'tile',
+      ownerId: 'player-1'
+    });
+  });
+
+  it('lets friendly incoming atoms pass through a Shield without breaking it', () => {
+    const match = seedBoard(
+      createMatch({ columns: 3, rows: 3, ruleset: 'shielded' }),
+      [
+        { column: 0, count: 1, ownerId: 'player-1', row: 0 },
+        { column: 1, count: 2, ownerId: 'player-1', row: 0 }
+      ]
+    );
+    const shielded = shieldTile(match, { column: 0, row: 0 }).state;
+    const playerOneTurn = {
+      ...shielded,
+      activePlayerId: 'player-1' as const
+    };
+
+    const result = placeAtom(playerOneTurn, { column: 1, row: 0 });
+
+    expect(result.waves[0]?.blockedPaths).toEqual([]);
+    expect(getTile(result.timeline[1]!, { column: 0, row: 0 })).toMatchObject({
+      atomCount: 2,
+      ownerId: 'player-1',
+      shielded: true
+    });
+  });
+
+  it('blocks all same-wave incoming atoms from multiple opponents', () => {
+    const match = seedBoard(
+      createMatch({ columns: 3, playerCount: 3, rows: 3, ruleset: 'shielded' }),
+      [
+        { column: 1, count: 1, ownerId: 'player-1', row: 1 },
+        { column: 1, count: 2, ownerId: 'player-2', row: 0 },
+        { column: 0, count: 3, ownerId: 'player-3', row: 1 }
+      ]
+    );
+    const shielded = {
+      ...shieldTile(match, { column: 1, row: 1 }).state,
+      activePlayerId: 'player-2' as const
+    };
+
+    const result = placeAtom(shielded, { column: 1, row: 0 });
+
+    expect(result.waves[0]?.blockedPaths).toEqual(
+      expect.arrayContaining([
+        {
+          from: { column: 1, row: 0 },
+          ownerId: 'player-2',
+          to: { column: 1, row: 1 }
+        },
+        {
+          from: { column: 0, row: 1 },
+          ownerId: 'player-3',
+          to: { column: 1, row: 1 }
+        }
+      ])
+    );
+    expect(getTile(result.state, { column: 1, row: 1 })).toEqual({
+      atomCount: 1,
+      kind: 'tile',
+      ownerId: 'player-1'
+    });
+  });
+
+  it('removes a Shield when its tile explodes as a source', () => {
+    const match = seedBoard(
+      createMatch({ columns: 3, rows: 3, ruleset: 'shielded' }),
+      [{ column: 0, count: 1, ownerId: 'player-1', row: 0 }]
+    );
+    const shielded = {
+      ...shieldTile(match, { column: 0, row: 0 }).state,
+      activePlayerId: 'player-1' as const
+    };
+
+    const result = placeAtom(shielded, { column: 0, row: 0 });
+
+    expect(result.waves[0]?.sources).toEqual([
+      { column: 0, ownerId: 'player-1', row: 0 }
+    ]);
+    expect(getTile(result.timeline[1]!, { column: 0, row: 0 })).toEqual({
+      atomCount: 0,
+      kind: 'tile',
+      ownerId: null
+    });
+  });
+
+  it('prevents blocked opposing atoms from damaging a Shielded Destructible Tile', () => {
+    const match = seedBoard(
+      createMatch({
+        columns: 3,
+        destructibleTiles: [{ column: 1, hitPoints: 2, row: 0 }],
+        rows: 3,
+        ruleset: 'shielded'
+      }),
+      [
+        { column: 0, count: 1, ownerId: 'player-2', row: 0 },
+        { column: 1, count: 1, hitPoints: 2, ownerId: 'player-1', row: 0 }
+      ]
+    );
+    const shielded = {
+      ...shieldTile(match, { column: 1, row: 0 }).state,
+      activePlayerId: 'player-2' as const
+    };
+
+    const result = placeAtom(shielded, { column: 0, row: 0 });
+
+    expect(getTile(result.state, { column: 1, row: 0 })).toEqual({
+      atomCount: 1,
+      hitPoints: 2,
+      kind: 'tile',
+      ownerId: 'player-1'
+    });
   });
 
   it('has the planned board size presets', () => {

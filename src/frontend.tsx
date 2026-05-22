@@ -26,7 +26,11 @@ import {
 import { BoardSetupsScreen } from './screens/board-setups';
 import { Main } from './screens/main';
 
-const basePath = process.env.BUN_PUBLIC_BASE_PATH;
+const basePath = (
+  import.meta as ImportMeta & {
+    readonly env?: { readonly BUN_PUBLIC_BASE_PATH?: string };
+  }
+).env?.BUN_PUBLIC_BASE_PATH;
 
 const getRoute = (): AppRoute =>
   getAppRoute(window.location.pathname, basePath);

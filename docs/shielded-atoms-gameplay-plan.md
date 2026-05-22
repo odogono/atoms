@@ -35,12 +35,12 @@ Shielded Tiles still explode normally at Critical Mass.
   Tile.
 - Board visual: show Shielded Tiles with an owner-colored ring that does not
   obscure atom count or Capacity.
-- Snapshot contract: add version 3 using separate metadata for `ruleset`,
+- Snapshot contract: add version 4 using separate metadata for `ruleset`,
   Shielded Tile positions, and per-player Shield Charge counts; keep existing
   ASCII board cell tokens unchanged.
 - Documentation: update `CONTEXT.md` with glossary terms `Shield`,
   `Shield Charge`, and `Shielded Atoms`.
-- ADR: add a short ADR for snapshot v3 Shield metadata, because choosing
+- ADR: add a short ADR for snapshot v4 Shield metadata, because choosing
   separate metadata over board-token encoding is a durable contract decision.
 
 ## Test Plan
@@ -53,7 +53,7 @@ Shielded Tiles still explode normally at Critical Mass.
   blocked at the Shielded Tile.
 - Flow tests: Shield tool mode, keyboard cursor action, terminal states, NPC
   Shield decisions.
-- Snapshot tests: v1/v2 still parse, v3 round-trips ruleset, charges, and
+- Snapshot tests: v1/v2/v3 still parse, v4 round-trips ruleset, charges, and
   Shielded Tiles.
 
 ## Assumptions

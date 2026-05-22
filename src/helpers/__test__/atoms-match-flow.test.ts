@@ -8,7 +8,7 @@ import {
   type MatchFlowEffect,
   type MatchFlowState
 } from '../atoms-match-flow';
-import { createMatch, getTile } from '../atoms-match-rules';
+import { createMatch, getShieldCharges, getTile } from '../atoms-match-rules';
 import { seedBoard, withPlayersHavingTakenTurns } from './atoms-test-fixtures';
 
 const applyEffect = (state: MatchFlowState, effect: MatchFlowEffect) =>
@@ -210,6 +210,58 @@ describe('atoms match flow', () => {
     expect(() => getTile(started.state.match, { column: 1, row: 1 })).toThrow(
       'Position is a hole: 1,1'
     );
+  });
+
+  it('plays a human Shield action as a full turn without playback', () => {
+    const initial = createMatchFlowState({
+      mode: 'local',
+      presetIndex: 0,
+      ruleset: 'shielded'
+    });
+    const flow: MatchFlowState = {
+      ...initial,
+      match: seedBoard(initial.match, [
+        { column: 0, count: 1, ownerId: 'player-1', row: 0 }
+      ])
+    };
+
+    const shielded = updateMatchFlow(flow, {
+      action: {
+        position: { column: 0, row: 0 },
+        type: 'shield-tile'
+      },
+      type: 'attempt-action'
+    });
+
+    expect(shielded.state.isResolving).toBe(false);
+    expect(shielded.state.match.turnNumber).toBe(1);
+    expect(shielded.state.match.activePlayerId).toBe('player-2');
+    expect(getShieldCharges(shielded.state.match, 'player-1')).toBe(1);
+    expect(getTile(shielded.state.match, { column: 0, row: 0 })).toMatchObject({
+      ownerId: 'player-1',
+      shielded: true
+    });
+    expect(shielded.effects).toEqual([]);
+  });
+
+  it('flashes illegal Shield targets without spending a Shield Charge', () => {
+    const flow = createMatchFlowState({
+      mode: 'local',
+      presetIndex: 0,
+      ruleset: 'shielded'
+    });
+
+    const illegal = updateMatchFlow(flow, {
+      action: {
+        position: { column: 0, row: 0 },
+        type: 'shield-tile'
+      },
+      type: 'attempt-action'
+    });
+
+    expect(illegal.state.illegalTile).toEqual({ column: 0, row: 0 });
+    expect(getShieldCharges(illegal.state.match, 'player-1')).toBe(2);
+    expect(illegal.state.match.turnNumber).toBe(0);
   });
 
   it('schedules NPC turns from per-player controllers with 2 to 4 Players', () => {

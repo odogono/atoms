@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-05-22
+
+### Added
+
+- Added Shielded Atoms as an opt-in normal Match ruleset with Shield Charges, Shielded Tiles, Shield actions, Shield blocking during Explosion Waves, and deterministic NPC Shield decisions.
+- Added Shielded Atoms setup UI, Shield tool controls, `S` keyboard toggle, Shield charge display, Shield rings on the 3D board, and blocked-path playback.
+- Added Match Snapshot version 4 with explicit ruleset metadata, Shielded Tile positions, and per-Player Shield Charge counts.
+- Added Shielded Atoms glossary language and ADR-0006 for the snapshot v4 Shield metadata decision.
+
+### Changed
+
+- New Match snapshots now serialize as version 4 while still parsing v1-v3 snapshots as Classic Atoms.
+- Renamed the normal Match action count from Placements to Turns so Shield actions and Atom placements share one turn counter.
+
 ## [0.4.3] - 2026-05-22
 
 ### Added

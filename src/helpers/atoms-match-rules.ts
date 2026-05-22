@@ -34,10 +34,13 @@ export type Player = {
   name: string;
 };
 
+export type Ruleset = 'classic' | 'shielded';
+
 type BaseTile = {
   atomCount: number;
   kind: 'tile';
   ownerId: PlayerId | null;
+  shielded: boolean;
 };
 
 export type NormalTile = BaseTile & {
@@ -63,11 +66,24 @@ export type ExplosionPath = {
 };
 
 export type ExplosionWave = {
+  blockedPaths: ExplosionPath[];
   paths: ExplosionPath[];
   sources: Array<Position & { ownerId: PlayerId }>;
 };
 
 export type MatchStatus = 'playing' | 'stalemate' | 'won';
+
+export type PlaceAtomAction = {
+  position: Position;
+  type: 'place-atom';
+};
+
+export type ShieldTileAction = {
+  position: Position;
+  type: 'shield-tile';
+};
+
+export type MatchAction = PlaceAtomAction | ShieldTileAction;
 
 export type MatchState = {
   activePlayerId: PlayerId;
@@ -75,6 +91,8 @@ export type MatchState = {
   columns: number;
   players: Player[];
   rows: number;
+  ruleset: Ruleset;
+  shieldCharges: Partial<Record<PlayerId, number>>;
   status: MatchStatus;
   turnNumber: number;
   winnerId: PlayerId | null;
@@ -132,6 +150,7 @@ type CreateMatchOptions = {
   neutralAtoms?: readonly NeutralAtomSetup[];
   playerCount?: number;
   rows?: number;
+  ruleset?: Ruleset;
 };
 
 export const isHole = (cell: BoardCell): cell is Hole => cell.kind === 'hole';
@@ -155,7 +174,8 @@ const assertPosition = (game: MatchState, position: Position) => {
 export const cloneGame = (game: MatchState): MatchState => ({
   ...game,
   cells: game.cells.map(cell => ({ ...cell })),
-  players: game.players.map(player => ({ ...player }))
+  players: game.players.map(player => ({ ...player })),
+  shieldCharges: { ...game.shieldCharges }
 });
 
 export const positionKey = (position: Position) =>
@@ -175,7 +195,8 @@ export const indexToPosition = (
 const createEmptyTile = (): Tile => ({
   atomCount: 0,
   kind: 'tile',
-  ownerId: null
+  ownerId: null,
+  shielded: false
 });
 
 const createEmptyTileFromSource = (tile: Tile): Tile =>
@@ -184,7 +205,8 @@ const createEmptyTileFromSource = (tile: Tile): Tile =>
         atomCount: 0,
         hitPoints: tile.hitPoints - 1,
         kind: 'tile',
-        ownerId: null
+        ownerId: null,
+        shielded: false
       }
     : createEmptyTile();
 
@@ -308,7 +330,8 @@ export const createMatch = ({
   holes = [],
   neutralAtoms = [],
   playerCount = 2,
-  rows = 8
+  rows = 8,
+  ruleset = 'classic'
 }: CreateMatchOptions = {}): MatchState => {
   if (playerCount < 2 || playerCount > 4) {
     throw new Error('Atoms supports between 2 and 4 players.');
@@ -319,6 +342,9 @@ export const createMatch = ({
     eliminated: false,
     hasTakenTurn: false
   }));
+  const shieldCharges = Object.fromEntries(
+    players.map(player => [player.id, ruleset === 'shielded' ? 2 : 0])
+  ) as Partial<Record<PlayerId, number>>;
   const cells: BoardCell[] = Array.from(
     { length: rows * columns },
     createEmptyTile
@@ -330,6 +356,8 @@ export const createMatch = ({
     columns,
     players,
     rows,
+    ruleset,
+    shieldCharges,
     status: 'playing',
     turnNumber: 0,
     winnerId: null
@@ -373,17 +401,51 @@ export const isLegalPlacement = (game: MatchState, position: Position) => {
   );
 };
 
-export const getLegalPlacements = (game: MatchState) => {
+const getPositionsWhere = (
+  game: MatchState,
+  predicate: (game: MatchState, position: Position) => boolean
+) => {
   const moves: Position[] = [];
 
   for (const position of getPlayablePositions(game)) {
-    if (isLegalPlacement(game, position)) {
+    if (predicate(game, position)) {
       moves.push(position);
     }
   }
 
   return moves;
 };
+
+export const getLegalPlacements = (game: MatchState) =>
+  getPositionsWhere(game, isLegalPlacement);
+
+export const getShieldCharges = (game: MatchState, playerId: PlayerId) =>
+  game.shieldCharges[playerId] ?? 0;
+
+export const isLegalShieldPlacement = (
+  game: MatchState,
+  position: Position
+) => {
+  if (
+    game.status !== 'playing' ||
+    game.ruleset !== 'shielded' ||
+    getShieldCharges(game, game.activePlayerId) <= 0
+  ) {
+    return false;
+  }
+
+  const cell = getCell(game, position);
+  if (isHole(cell)) {
+    return false;
+  }
+
+  return (
+    cell.ownerId === game.activePlayerId && cell.atomCount > 0 && !cell.shielded
+  );
+};
+
+export const getLegalShieldPlacements = (game: MatchState) =>
+  getPositionsWhere(game, isLegalShieldPlacement);
 
 const findCriticalSources = (game: MatchState) => {
   const sources: Array<Position & { ownerId: PlayerId }> = [];
@@ -409,7 +471,7 @@ const getCascadeSignature = (
           ? 'hole'
           : `${cell.ownerId ?? 'none'}:${cell.atomCount}:${
               isDestructibleTile(cell) ? cell.hitPoints : 'solid'
-            }`
+            }:${cell.shielded ? 'shielded' : 'open'}`
       )
       .join('|'),
     sources
@@ -543,26 +605,49 @@ const resolveCascades = (
       }
     }
 
+    const appliedPaths: ExplosionPath[] = [];
+    const blockedPaths: ExplosionPath[] = [];
+
     for (const incoming of incomingByTile.values()) {
       const destination = incoming[0]!.to;
       const tile = getTile(game, destination);
+      const blockedByShield =
+        tile.shielded && tile.ownerId
+          ? incoming.filter(path => path.ownerId !== tile.ownerId)
+          : [];
+      const appliedIncoming =
+        blockedByShield.length > 0
+          ? incoming.filter(path => path.ownerId === tile.ownerId)
+          : incoming;
+
+      blockedPaths.push(...blockedByShield);
+      appliedPaths.push(...appliedIncoming);
+
+      if (blockedByShield.length > 0) {
+        tile.shielded = false;
+      }
+
+      if (appliedIncoming.length === 0) {
+        continue;
+      }
+
       const ownerId = chooseIncomingOwner(
         game,
         activePlayerId,
-        incoming.map(path => path.ownerId)
+        appliedIncoming.map(path => path.ownerId)
       );
 
       if (isDestructibleTile(tile)) {
-        tile.hitPoints -= incoming.length;
+        tile.hitPoints -= appliedIncoming.length;
       }
-      tile.atomCount += incoming.length;
+      tile.atomCount += appliedIncoming.length;
       tile.ownerId = ownerId;
     }
 
     removeDestroyedDestructibleTiles(game);
     collapseUnsupportedTiles(game);
 
-    waves.push({ paths, sources });
+    waves.push({ blockedPaths, paths: appliedPaths, sources });
     if (resolveEliminations(game)) {
       timeline.push(cloneGame(game));
       return { stalemated: false, timeline, waves };
@@ -626,3 +711,35 @@ export const placeAtom = (
 
   return { state: next, timeline, waves: cascade.waves };
 };
+
+export const shieldTile = (
+  game: MatchState,
+  position: Position
+): PlaceAtomResult => {
+  if (!isLegalShieldPlacement(game, position)) {
+    throw new Error('Illegal shield placement.');
+  }
+
+  const next = cloneGame(game);
+  const activePlayer = next.players.find(
+    player => player.id === next.activePlayerId
+  )!;
+  const tile = getTile(next, position);
+
+  tile.shielded = true;
+  activePlayer.hasTakenTurn = true;
+  next.shieldCharges[activePlayer.id] =
+    getShieldCharges(next, activePlayer.id) - 1;
+  next.turnNumber += 1;
+  finishTurn(next);
+
+  return { state: next, timeline: [cloneGame(next)], waves: [] };
+};
+
+export const executeMatchAction = (
+  game: MatchState,
+  action: MatchAction
+): PlaceAtomResult =>
+  action.type === 'place-atom'
+    ? placeAtom(game, action.position)
+    : shieldTile(game, action.position);

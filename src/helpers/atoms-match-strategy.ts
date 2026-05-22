@@ -2,11 +2,14 @@ import {
   getCapacity,
   getLegalPlacements,
   getTile,
+  type MatchAction,
   type MatchState,
   type Position
 } from './atoms-match-rules';
 import {
+  chooseBaselineNpcAction,
   chooseBaselineNpcPlacement,
+  chooseTacticalNpcAction,
   chooseTacticalNpcPlacement
 } from './atoms-npc-strategy';
 
@@ -18,6 +21,7 @@ type MatchStrategyId =
   | string;
 
 export type MatchStrategy = {
+  chooseAction: (match: MatchState) => MatchAction | null;
   choosePlacement: (match: MatchState) => Position | null;
   id: MatchStrategyId;
 };
@@ -25,12 +29,24 @@ export type MatchStrategy = {
 const comparePositions = (a: Position, b: Position) =>
   a.row - b.row || a.column - b.column;
 
+const placementOnlyAction = (
+  choosePlacement: (match: MatchState) => Position | null,
+  match: MatchState
+): MatchAction | null => {
+  const placement = choosePlacement(match);
+  return placement ? { position: placement, type: 'place-atom' } : null;
+};
+
 export const firstLegalMatchStrategy: MatchStrategy = {
+  chooseAction: match =>
+    placementOnlyAction(firstLegalMatchStrategy.choosePlacement, match),
   choosePlacement: match => getLegalPlacements(match)[0] ?? null,
   id: 'first-legal'
 };
 
 export const lowCapacityMatchStrategy: MatchStrategy = {
+  chooseAction: match =>
+    placementOnlyAction(lowCapacityMatchStrategy.choosePlacement, match),
   choosePlacement: match =>
     getLegalPlacements(match)
       .map(placement => ({
@@ -48,6 +64,7 @@ export const lowCapacityMatchStrategy: MatchStrategy = {
 };
 
 export const baselineMatchStrategy: MatchStrategy = {
+  chooseAction: chooseBaselineNpcAction,
   choosePlacement: chooseBaselineNpcPlacement,
   id: 'baseline'
 };
@@ -55,6 +72,7 @@ export const baselineMatchStrategy: MatchStrategy = {
 export const heuristicMatchStrategy = baselineMatchStrategy;
 
 export const tacticalMatchStrategy: MatchStrategy = {
+  chooseAction: chooseTacticalNpcAction,
   choosePlacement: chooseTacticalNpcPlacement,
   id: 'tactical'
 };

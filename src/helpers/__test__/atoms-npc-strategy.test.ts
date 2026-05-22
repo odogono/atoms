@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'bun:test';
 
-import { createMatch, isLegalPlacement, placeAtom } from '../atoms-match-rules';
+import {
+  createMatch,
+  executeMatchAction,
+  isLegalPlacement,
+  placeAtom
+} from '../atoms-match-rules';
 import {
   chooseBaselineNpcPlacement,
+  chooseTacticalNpcAction,
   chooseTacticalNpcPlacement
 } from '../atoms-npc-strategy';
 import { seedBoard, withPlayersHavingTakenTurns } from './atoms-test-fixtures';
@@ -86,5 +92,22 @@ describe('atoms NPC strategy', () => {
       column: 0,
       row: 0
     });
+  });
+
+  it('tactical can choose a Shield action in Shielded Atoms', () => {
+    const playerOneTurn = seedBoard(
+      createMatch({ columns: 3, rows: 3, ruleset: 'shielded' }),
+      [
+        { column: 1, count: 1, ownerId: 'player-1', row: 1 },
+        { column: 1, count: 2, ownerId: 'player-2', row: 0 }
+      ]
+    );
+
+    const action = chooseTacticalNpcAction(playerOneTurn);
+
+    expect(action).not.toBe(null);
+    expect(action?.type).toBe('shield-tile');
+    expect(action?.position).toEqual({ column: 1, row: 1 });
+    expect(executeMatchAction(playerOneTurn, action!).state.turnNumber).toBe(1);
   });
 });

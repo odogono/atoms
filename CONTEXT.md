@@ -40,6 +40,18 @@ One playable session of Atoms, from initial Board through Victory or Stalemate, 
 **Golf Mode**:
 A solo puzzle mode where one Player tries to clear a curated starting Board of opposing Player-owned Atoms in as few Strokes as possible.
 
+**Shielded Atoms**:
+An opt-in Match ruleset where Players may spend Shield Charges to protect owned Tiles during Explosion Waves.
+
+**Shield Charge**:
+A limited Player resource in Shielded Atoms spent to add one Shield to one owned Tile.
+
+**Shield**:
+A temporary protection on one Shielded Tile that blocks opposing incoming atoms during one Explosion Wave.
+
+**Shielded Tile**:
+A Player-owned Tile with an active Shield.
+
 **Golf Course**:
 An ordered series of Golf Holes scored as one run.
 
@@ -117,6 +129,11 @@ _Avoid_: Dominance, threat level
 - A **Board** contains many **Cells**.
 - A **Cell** is either a **Tile** or a **Hole**.
 - A **Match** contains one active **Board** and its participating **Players**.
+- **Shielded Atoms** is a ruleset for **Matches**, not for **Golf Mode**.
+- A **Player** has **Shield Charges** only in **Shielded Atoms**.
+- A **Shield Charge** may be spent to make one owned **Tile** a **Shielded Tile**.
+- A **Shielded Tile** has exactly one **Shield**.
+- A **Shield** blocks opposing incoming **Atoms** during one **Explosion Wave**.
 - **Golf Mode** uses normal placement, Capture, Explosion Wave, Cascade, and Stalemate rules.
 - A **Golf Course** contains one or more **Golf Holes**.
 - A **Golf Hole** starts from a complete **Match** state, not from a **Board Setup**.
@@ -174,3 +191,4 @@ _Avoid_: Dominance, threat level
 - "Board Setup" previously omitted Destructible Tiles; resolved: **Board Setup** includes every pre-turn Board feature that can exist before a Match starts, including **Destructible Tiles**.
 - "Board Setup" could mean an invalid in-editor shape; resolved: use **Board Setup Draft** for editable intermediate shapes, and reserve **Board Setup** for valid shapes that can be saved or used in a **Match**.
 - "Golf board" could have meant a **Board Setup**; resolved: use **Golf Hole** for a curated puzzle with Player-owned starting Atoms.
+- "shield" could have meant a permanent Tile state; resolved: a **Shield** is temporary protection on a Player-owned **Shielded Tile**.

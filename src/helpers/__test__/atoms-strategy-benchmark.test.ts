@@ -16,11 +16,16 @@ import {
 } from '../atoms-strategy-benchmark';
 
 const firstLegalStrategy: MatchStrategy = {
+  chooseAction: match => {
+    const placement = getLegalPlacements(match)[0] ?? null;
+    return placement ? { position: placement, type: 'place-atom' } : null;
+  },
   choosePlacement: match => getLegalPlacements(match)[0] ?? null,
   id: 'first-legal'
 };
 
 const stalledStrategy: MatchStrategy = {
+  chooseAction: () => null,
   choosePlacement: () => null,
   id: 'stalled'
 };

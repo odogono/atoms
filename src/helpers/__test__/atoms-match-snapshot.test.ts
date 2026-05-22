@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 
-import { createMatch, getCell, placeAtom } from '../atoms-match-rules';
+import {
+  createMatch,
+  getCell,
+  getTile,
+  placeAtom,
+  shieldTile
+} from '../atoms-match-rules';
 import {
   formatMatchSnapshot,
   parseMatchSnapshot,
@@ -31,7 +37,8 @@ describe('atoms match snapshots', () => {
       },
       mode: 'npc',
       presetIndex: null,
-      version: 2
+      ruleset: 'classic',
+      version: 4
     });
   });
 
@@ -102,7 +109,8 @@ describe('atoms match snapshots', () => {
         board: ['[] 11 []', '[] [] []', '[] [] []'],
         destructibleTiles: [{ column: 1, hitPoints: 2, row: 0 }]
       },
-      version: 3
+      ruleset: 'classic',
+      version: 4
     });
 
     const parsed = parseMatchSnapshot(snapshot);
@@ -153,7 +161,8 @@ describe('atoms match snapshots', () => {
 
     expect(parsed.ok).toBe(true);
     if (parsed.ok) {
-      expect(parsed.snapshot.version).toBe(2);
+      expect(parsed.snapshot.version).toBe(4);
+      expect(parsed.snapshot.ruleset).toBe('classic');
     }
   });
 
@@ -275,6 +284,87 @@ describe('atoms match snapshots', () => {
           destructibleTiles: [{ column: 1, hitPoints: 10, row: 1 }]
         },
         version: 3
+      }).ok
+    ).toBe(false);
+  });
+
+  it('round-trips Shielded Atoms metadata without changing board tokens', () => {
+    const match = seedBoard(
+      createMatch({ columns: 3, rows: 3, ruleset: 'shielded' }),
+      [
+        { column: 0, count: 1, ownerId: 'player-1', row: 0 },
+        { column: 1, count: 1, ownerId: 'player-2', row: 1 }
+      ]
+    );
+    const shielded = {
+      ...shieldTile(match, { column: 0, row: 0 }).state,
+      activePlayerId: 'player-1' as const
+    };
+
+    const snapshot = serializeMatchSnapshot({
+      match: shielded,
+      mode: 'local',
+      presetIndex: null
+    });
+
+    expect(snapshot).toMatchObject({
+      match: {
+        board: ['11 [] []', '[] 21 []', '[] [] []'],
+        shieldCharges: { '1': 1, '2': 2 },
+        shields: [{ column: 0, row: 0 }]
+      },
+      ruleset: 'shielded',
+      version: 4
+    });
+
+    const parsed = parseMatchSnapshot(snapshot);
+
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.snapshot).toEqual(snapshot);
+      expect(parsed.match.ruleset).toBe('shielded');
+      expect(parsed.match.shieldCharges).toEqual({
+        'player-1': 1,
+        'player-2': 2
+      });
+      expect(getTile(parsed.match, { column: 0, row: 0 })).toMatchObject({
+        ownerId: 'player-1',
+        shielded: true
+      });
+    }
+  });
+
+  it('rejects invalid Shield metadata', () => {
+    const base = serializeMatchSnapshot({
+      match: seedBoard(
+        createMatch({ columns: 3, rows: 3, ruleset: 'shielded' }),
+        [{ column: 0, count: 1, ownerId: 'player-1', row: 0 }]
+      ),
+      mode: 'npc',
+      presetIndex: null
+    });
+
+    expect(
+      parseMatchSnapshot({
+        ...base,
+        match: { ...base.match, shields: [{ column: 1, row: 1 }] }
+      }).ok
+    ).toBe(false);
+    expect(
+      parseMatchSnapshot({
+        ...base,
+        match: {
+          ...base.match,
+          shieldCharges: { '1': 1, '2': 2 },
+          shields: [{ column: 0, row: 0 }]
+        },
+        ruleset: 'classic'
+      }).ok
+    ).toBe(false);
+    expect(
+      parseMatchSnapshot({
+        ...base,
+        match: { ...base.match, shieldCharges: { '1': 3, '2': 2 } }
       }).ok
     ).toBe(false);
   });

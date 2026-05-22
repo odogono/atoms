@@ -283,6 +283,21 @@ const BoardTile = ({
           roughness={0.72}
         />
       </mesh>
+      {tile.shielded && playerColor ? (
+        <mesh
+          position={[worldPosition.x, 0.155, worldPosition.z]}
+          raycast={ignoreRaycast}
+          rotation={[Math.PI / 2, 0, 0]}
+        >
+          <torusGeometry args={[0.39, 0.025, 10, 48]} />
+          <meshStandardMaterial
+            color={playerColor}
+            emissive={playerColor}
+            emissiveIntensity={0.2}
+            roughness={0.38}
+          />
+        </mesh>
+      ) : null}
       {isDestructible ? (
         <>
           <group
@@ -386,6 +401,7 @@ export const GameBoard = ({
   illegalTile,
   isInteractive = true,
   isResolving,
+  legalPositions,
   match,
   onTileClick,
   onTileHover,
@@ -398,6 +414,7 @@ export const GameBoard = ({
   illegalTile: Position | null;
   isInteractive?: boolean;
   isResolving: boolean;
+  legalPositions?: Position[];
   match: MatchState;
   onTileClick: (position: Position) => void;
   onTileHover: (position: Position | null) => void;
@@ -411,9 +428,11 @@ export const GameBoard = ({
   const legalTileKeys = useMemo(
     () =>
       new Set(
-        showLegalPlacements ? getLegalPlacements(match).map(positionKey) : []
+        showLegalPlacements
+          ? (legalPositions ?? getLegalPlacements(match)).map(positionKey)
+          : []
       ),
-    [match, showLegalPlacements]
+    [legalPositions, match, showLegalPlacements]
   );
   const activePlayerColor = playerColors.get(match.activePlayerId) ?? '#2563eb';
   const boardWidth = match.columns * TILE_SIZE;
@@ -486,6 +505,14 @@ export const GameBoard = ({
       {currentWave?.paths.map((path, index) => (
         <FlightAtom
           key={`${index}-${positionKey(path.from)}-${positionKey(path.to)}`}
+          match={match}
+          path={path}
+          playerColor={playerColors.get(path.ownerId) ?? '#2563eb'}
+        />
+      ))}
+      {currentWave?.blockedPaths.map((path, index) => (
+        <FlightAtom
+          key={`blocked-${index}-${positionKey(path.from)}-${positionKey(path.to)}`}
           match={match}
           path={path}
           playerColor={playerColors.get(path.ownerId) ?? '#2563eb'}

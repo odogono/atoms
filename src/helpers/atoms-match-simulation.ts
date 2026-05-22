@@ -1,6 +1,6 @@
 import {
   cloneGame,
-  placeAtom,
+  executeMatchAction,
   type MatchState,
   type MatchStatus,
   type PlayerId
@@ -158,8 +158,8 @@ export const simulateNpcMatch = (
       });
     }
 
-    const placement = strategy.choosePlacement(finalMatch);
-    if (!placement) {
+    const action = strategy.chooseAction(finalMatch);
+    if (!action) {
       return buildResult({
         finalMatch,
         initialBoardControl,
@@ -174,7 +174,7 @@ export const simulateNpcMatch = (
       });
     }
 
-    const result = placeAtom(finalMatch, placement);
+    const result = executeMatchAction(finalMatch, action);
     turnsSimulated += 1;
     totalExplosionWaves += result.waves.length;
     maxCascadeWaves = Math.max(maxCascadeWaves, result.waves.length);

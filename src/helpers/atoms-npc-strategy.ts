@@ -1,9 +1,13 @@
 import {
+  executeMatchAction,
   getCapacity,
   getLegalPlacements,
+  getLegalShieldPlacements,
   getTile,
   isHole,
   placeAtom,
+  shieldTile,
+  type MatchAction,
   type MatchState,
   type PlayerId,
   type Position
@@ -55,6 +59,8 @@ const evaluateMatchForPlayer = (match: MatchState, playerId: PlayerId) => {
   let ownedAtoms = 0;
   let opponentAtoms = 0;
   let neutralAtoms = 0;
+  let ownedShields = 0;
+  let opponentShields = 0;
   let ownedCriticalPressure = 0;
   let opponentCriticalPressure = 0;
 
@@ -76,10 +82,12 @@ const evaluateMatchForPlayer = (match: MatchState, playerId: PlayerId) => {
       if (cell.ownerId === playerId) {
         ownedTiles += 1;
         ownedAtoms += cell.atomCount;
+        ownedShields += cell.shielded ? 1 : 0;
         ownedCriticalPressure += pressure;
       } else {
         opponentTiles += 1;
         opponentAtoms += cell.atomCount;
+        opponentShields += cell.shielded ? 1 : 0;
         opponentCriticalPressure += pressure;
       }
     }
@@ -93,10 +101,12 @@ const evaluateMatchForPlayer = (match: MatchState, playerId: PlayerId) => {
   return (
     ownedTiles * 90 +
     ownedAtoms * 35 +
+    ownedShields * 260 +
     ownedCriticalPressure * 28 +
     legalPlacements * 2 -
     opponentTiles * 80 -
     opponentAtoms * 32 -
+    opponentShields * 220 -
     opponentCriticalPressure * 22 -
     neutralAtoms * 4
   );
@@ -136,6 +146,16 @@ const scorePlacement = (
   );
 };
 
+const scoreShieldAction = (match: MatchState, position: Position) => {
+  const result = shieldTile(match, position);
+
+  return (
+    evaluateMatchForPlayer(result.state, match.activePlayerId) -
+    position.row * 0.01 -
+    position.column * 0.001
+  );
+};
+
 const rankPlacements = (match: MatchState) => {
   const legalPlacements = getLegalPlacements(match);
   if (legalPlacements.length === 0) {
@@ -164,23 +184,54 @@ const rankPlacements = (match: MatchState) => {
     );
 };
 
+const rankActions = (match: MatchState) => {
+  const placementActions = rankPlacements(match).map(entry => ({
+    action: {
+      position: entry.placement,
+      type: 'place-atom'
+    } satisfies MatchAction,
+    score: entry.score
+  }));
+  const shieldActions = getLegalShieldPlacements(match).map(position => ({
+    action: {
+      position,
+      type: 'shield-tile'
+    } satisfies MatchAction,
+    score: scoreShieldAction(match, position)
+  }));
+
+  return [...placementActions, ...shieldActions].sort(
+    (a, b) =>
+      b.score - a.score ||
+      (a.action.type === b.action.type
+        ? comparePositions(a.action.position, b.action.position)
+        : a.action.type.localeCompare(b.action.type))
+  );
+};
+
 export const chooseBaselineNpcPlacement = (
   match: MatchState
 ): Position | null => rankPlacements(match)[0]?.placement ?? null;
 
-const scoreTacticalPlacement = (match: MatchState, position: Position) => {
+export const chooseBaselineNpcAction = (
+  match: MatchState
+): MatchAction | null => rankActions(match)[0]?.action ?? null;
+
+const scoreTacticalAction = (match: MatchState, action: MatchAction) => {
   const playerId = match.activePlayerId;
-  const result = placeAtom(match, position);
+  const result = executeMatchAction(match, action);
 
   if (result.state.status === 'stalemate') {
-    return -2_000_000 - position.row * 0.01 - position.column * 0.001;
+    return (
+      -2_000_000 - action.position.row * 0.01 - action.position.column * 0.001
+    );
   }
 
   if (result.state.status !== 'playing') {
     return evaluateMatchForPlayer(result.state, playerId);
   }
 
-  const opponentReplies = rankPlacements(result.state).slice(
+  const opponentReplies = rankActions(result.state).slice(
     0,
     TACTICAL_CANDIDATE_LIMIT
   );
@@ -192,12 +243,15 @@ const scoreTacticalPlacement = (match: MatchState, position: Position) => {
   return Math.min(
     ...opponentReplies.map(reply =>
       evaluateMatchForPlayer(
-        placeAtom(result.state, reply.placement).state,
+        executeMatchAction(result.state, reply.action).state,
         playerId
       )
     )
   );
 };
+
+const scoreTacticalPlacement = (match: MatchState, position: Position) =>
+  scoreTacticalAction(match, { position, type: 'place-atom' });
 
 export const chooseTacticalNpcPlacement = (
   match: MatchState
@@ -212,4 +266,22 @@ export const chooseTacticalNpcPlacement = (
       (a, b) => b.score - a.score || comparePositions(a.placement, b.placement)
     )[0]?.placement ?? null;
 
+export const chooseTacticalNpcAction = (
+  match: MatchState
+): MatchAction | null =>
+  rankActions(match)
+    .slice(0, TACTICAL_CANDIDATE_LIMIT)
+    .map(({ action }) => ({
+      action,
+      score: scoreTacticalAction(match, action)
+    }))
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        (a.action.type === b.action.type
+          ? comparePositions(a.action.position, b.action.position)
+          : a.action.type.localeCompare(b.action.type))
+    )[0]?.action ?? null;
+
 export const chooseNpcPlacement = chooseTacticalNpcPlacement;
+export const chooseNpcAction = chooseTacticalNpcAction;

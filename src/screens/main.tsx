@@ -17,6 +17,7 @@ import {
   Play,
   Plus,
   RotateCcw,
+  Shield,
   Target,
   Trophy,
   X
@@ -59,10 +60,15 @@ import {
   type MatchFlowEvent
 } from '@helpers/atoms-match-flow';
 import {
+  getLegalShieldPlacements,
+  getShieldCharges,
+  isLegalShieldPlacement,
   type ExplosionWave,
+  type MatchAction,
   type MatchState,
   type PlayerId,
-  type Position
+  type Position,
+  type Ruleset
 } from '@helpers/atoms-match-rules';
 import {
   getBoardControl,
@@ -120,7 +126,8 @@ const getStatusText = (
 };
 
 type DialogState = 'closed' | 'confirm-abandon' | 'setup';
-type PlayKind = 'classic' | 'golf';
+type MatchActionTool = MatchAction['type'];
+type PlayKind = 'golf' | 'match';
 
 type MatchSetupDraft = {
   boardSetupId: string;
@@ -128,6 +135,7 @@ type MatchSetupDraft = {
   golfHoleIndex: number;
   playerCount: number;
   playKind: PlayKind;
+  ruleset: Ruleset;
 };
 
 const iconClassName = 'h-4 w-4';
@@ -146,8 +154,15 @@ const playKindOptions: Array<{
   label: string;
   value: PlayKind;
 }> = [
-  { label: 'Classic', value: 'classic' },
+  { label: 'Match', value: 'match' },
   { label: 'Golf', value: 'golf' }
+];
+const rulesetOptions: Array<{
+  label: string;
+  value: Ruleset;
+}> = [
+  { label: 'Classic Atoms', value: 'classic' },
+  { label: 'Shielded Atoms', value: 'shielded' }
 ];
 
 const getMetricForPlayer = (metric: MatchMetric, playerId: PlayerId) =>
@@ -312,6 +327,18 @@ const MatchSetupDialog = ({
           </>
         ) : (
           <>
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Ruleset</p>
+              <SegmentedControl
+                ariaLabel="Ruleset"
+                onChange={ruleset => {
+                  onChange({ ...draft, ruleset });
+                }}
+                options={rulesetOptions}
+                value={draft.ruleset}
+              />
+            </div>
+
             <div className="space-y-2">
               <p className="text-sm font-medium">Board Setup</p>
               <BoardSetupCarousel
@@ -511,13 +538,15 @@ const PlayerPanel = ({
   criticalPressure,
   isActive,
   label,
-  player
+  player,
+  shieldCharges
 }: {
   boardControl: number;
   criticalPressure: number;
   isActive: boolean;
   label: string;
   player: MatchState['players'][number];
+  shieldCharges?: number;
 }) => (
   <div
     className={cn(
@@ -541,7 +570,12 @@ const PlayerPanel = ({
         {player.eliminated ? 'Eliminated' : isActive ? 'Active' : 'Waiting'}
       </span>
     </div>
-    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+    <div
+      className={cn(
+        'mt-3 grid gap-2 text-xs',
+        shieldCharges === undefined ? 'grid-cols-2' : 'grid-cols-3'
+      )}
+    >
       <div>
         <p className="text-slate-500 dark:text-slate-400">Control</p>
         <p className="font-semibold tabular-nums">{boardControl}</p>
@@ -552,6 +586,12 @@ const PlayerPanel = ({
           {criticalPressure.toFixed(2)}
         </p>
       </div>
+      {shieldCharges === undefined ? null : (
+        <div>
+          <p className="text-slate-500 dark:text-slate-400">Shields</p>
+          <p className="font-semibold tabular-nums">{shieldCharges}</p>
+        </div>
+      )}
     </div>
   </div>
 );
@@ -734,7 +774,9 @@ export const Main = ({
     () => [...builtInBoardSetups, ...savedBoardSetups],
     [builtInBoardSetups, savedBoardSetups]
   );
-  const [playKind, setPlayKind] = useState<PlayKind>('classic');
+  const [playKind, setPlayKind] = useState<PlayKind>('match');
+  const [matchActionTool, setMatchActionTool] =
+    useState<MatchActionTool>('place-atom');
   const [golfFlow, setGolfFlow] = useState(() =>
     createGolfFlowState({
       bestStrokesByHole: loadGolfBestStrokes(
@@ -762,7 +804,8 @@ export const Main = ({
     controllers: matchFlow.controllers,
     golfHoleIndex: golfFlow.holeIndex,
     playerCount: matchFlow.playerCount,
-    playKind
+    playKind,
+    ruleset: matchFlow.match.ruleset
   }));
 
   const scheduleEffects = useCallback((effects: MatchFlowEffect[]) => {
@@ -862,9 +905,30 @@ export const Main = ({
   const displayHoveredTile = isGolf ? golfHoveredTile : hoveredTile;
   const displayIllegalTile = isGolf ? golfFlow.illegalTile : illegalTile;
   const displayIsResolving = isGolf ? golfFlow.isResolving : isResolving;
+  const activeShieldCharges = getShieldCharges(match, match.activePlayerId);
+  const canUseShieldTool =
+    !isGolf &&
+    match.ruleset === 'shielded' &&
+    match.status === 'playing' &&
+    !isResolving &&
+    !isNpcTurn;
+  const activeMatchActionTool =
+    canUseShieldTool &&
+    activeShieldCharges > 0 &&
+    matchActionTool === 'shield-tile'
+      ? 'shield-tile'
+      : 'place-atom';
+  const displayLegalPositions = useMemo(
+    () =>
+      activeMatchActionTool === 'shield-tile'
+        ? getLegalShieldPlacements(match)
+        : undefined,
+    [activeMatchActionTool, match]
+  );
 
   const resetGame = useCallback(() => {
     dispatch({ type: 'reset' });
+    setMatchActionTool('place-atom');
   }, [dispatch]);
 
   const openSetup = useCallback(() => {
@@ -875,7 +939,8 @@ export const Main = ({
       controllers: current.controllers,
       golfHoleIndex: currentGolf.holeIndex,
       playerCount: current.playerCount,
-      playKind
+      playKind,
+      ruleset: current.match.ruleset
     });
     setDialogState('setup');
   }, [playKind]);
@@ -906,6 +971,7 @@ export const Main = ({
       setGolfCursorTile(getInitialCursor(nextGolf.match));
       setGolfHoveredTile(null);
       setPlayKind('golf');
+      setMatchActionTool('place-atom');
       setDialogState('closed');
       return;
     }
@@ -922,9 +988,11 @@ export const Main = ({
       controllers: setupDraft.controllers,
       playerCount: setupDraft.playerCount,
       presetIndex,
+      ruleset: setupDraft.ruleset,
       type: 'start-match'
     });
-    setPlayKind('classic');
+    setPlayKind('match');
+    setMatchActionTool('place-atom');
     setDialogState('closed');
   }, [allBoardSetups, clearGolfTimeouts, dispatch, setupDraft]);
 
@@ -947,7 +1015,8 @@ export const Main = ({
       controllers: current.controllers,
       golfHoleIndex: golfFlowRef.current.holeIndex,
       playerCount: current.playerCount,
-      playKind: 'classic'
+      playKind: 'match',
+      ruleset: current.match.ruleset
     });
     setDialogState('setup');
     onPendingBoardSetupConsumed();
@@ -1048,6 +1117,20 @@ export const Main = ({
     transitionGolfHole(advanceGolfHole(golfFlowRef.current));
   }, [transitionGolfHole]);
 
+  const dispatchShieldAction = useCallback(
+    (position: Position) => {
+      const current = matchFlowRef.current.match;
+      dispatch({
+        action: { position, type: 'shield-tile' },
+        type: 'attempt-action'
+      });
+      if (isLegalShieldPlacement(current, position)) {
+        setMatchActionTool('place-atom');
+      }
+    },
+    [dispatch]
+  );
+
   const handleTileClick = useCallback(
     (position: Position) => {
       if (playKind === 'golf') {
@@ -1055,9 +1138,17 @@ export const Main = ({
         return;
       }
 
-      dispatch({ position, type: 'attempt-move' });
+      if (activeMatchActionTool === 'shield-tile') {
+        dispatchShieldAction(position);
+        return;
+      }
+
+      dispatch({
+        action: { position, type: 'place-atom' },
+        type: 'attempt-action'
+      });
     },
-    [dispatch, handleGolfStroke, playKind]
+    [activeMatchActionTool, dispatch, dispatchShieldAction, handleGolfStroke, playKind]
   );
 
   const handleTileHover = useCallback(
@@ -1102,6 +1193,16 @@ export const Main = ({
         return;
       }
 
+      if (event.key.toLowerCase() === 's') {
+        if (canUseShieldTool) {
+          event.preventDefault();
+          setMatchActionTool(current =>
+            current === 'shield-tile' ? 'place-atom' : 'shield-tile'
+          );
+        }
+        return;
+      }
+
       if (event.code === 'Space' || event.key === ' ') {
         event.preventDefault();
         if (playKind === 'golf') {
@@ -1109,9 +1210,17 @@ export const Main = ({
           return;
         }
 
+        if (activeMatchActionTool === 'shield-tile') {
+          dispatchShieldAction(matchFlowRef.current.cursorTile);
+          return;
+        }
+
         dispatch({
-          position: matchFlowRef.current.cursorTile,
-          type: 'attempt-move'
+          action: {
+            position: matchFlowRef.current.cursorTile,
+            type: 'place-atom'
+          },
+          type: 'attempt-action'
         });
       }
     };
@@ -1120,7 +1229,16 @@ export const Main = ({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [dialogState, dispatch, golfCursorTile, handleGolfStroke, playKind]);
+  }, [
+    activeMatchActionTool,
+    canUseShieldTool,
+    dialogState,
+    dispatch,
+    dispatchShieldAction,
+    golfCursorTile,
+    handleGolfStroke,
+    playKind
+  ]);
 
   return (
     <>
@@ -1206,14 +1324,74 @@ export const Main = ({
                       </div>
                       <div>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Placements
+                          Turns
                         </p>
                         <p className="font-semibold tabular-nums">
                           {match.turnNumber}
                         </p>
                       </div>
+                      <div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Ruleset
+                        </p>
+                        <p className="truncate font-semibold">
+                          {match.ruleset === 'shielded'
+                            ? 'Shielded Atoms'
+                            : 'Classic Atoms'}
+                        </p>
+                      </div>
                     </div>
                   </div>
+
+                  {match.ruleset === 'shielded' ? (
+                    <div className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800">
+                      <p className="text-xs font-semibold text-slate-500 uppercase dark:text-slate-400">
+                        Tool
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          aria-pressed={activeMatchActionTool === 'place-atom'}
+                          className={cn(
+                            'inline-flex items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold transition',
+                            activeMatchActionTool === 'place-atom'
+                              ? 'border-slate-950 bg-slate-950 text-white dark:border-white dark:bg-white dark:text-slate-950'
+                              : 'border-slate-300 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800'
+                          )}
+                          disabled={!canUseShieldTool}
+                          onClick={() => {
+                            setMatchActionTool('place-atom');
+                          }}
+                          type="button"
+                        >
+                          <Plus aria-hidden className={iconClassName} />
+                          Atom
+                        </button>
+                        <button
+                          aria-pressed={activeMatchActionTool === 'shield-tile'}
+                          className={cn(
+                            'inline-flex items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50',
+                            activeMatchActionTool === 'shield-tile'
+                              ? 'border-slate-950 bg-slate-950 text-white dark:border-white dark:bg-white dark:text-slate-950'
+                              : 'border-slate-300 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800'
+                          )}
+                          disabled={
+                            !canUseShieldTool || activeShieldCharges <= 0
+                          }
+                          onClick={() => {
+                            setMatchActionTool(current =>
+                              current === 'shield-tile'
+                                ? 'place-atom'
+                                : 'shield-tile'
+                            );
+                          }}
+                          type="button"
+                        >
+                          <Shield aria-hidden className={iconClassName} />
+                          {`Shield ${activeShieldCharges}`}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
 
                   <div className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800">
                     <MetricBar
@@ -1255,6 +1433,11 @@ export const Main = ({
                           player.id
                         )}
                         player={player}
+                        shieldCharges={
+                          match.ruleset === 'shielded'
+                            ? getShieldCharges(match, player.id)
+                            : undefined
+                        }
                       />
                     ))}
                   </div>
@@ -1330,6 +1513,7 @@ export const Main = ({
                 hoveredTile={displayHoveredTile}
                 illegalTile={displayIllegalTile}
                 isResolving={displayIsResolving}
+                legalPositions={displayLegalPositions}
                 match={displayMatch}
                 onTileClick={handleTileClick}
                 onTileHover={handleTileHover}

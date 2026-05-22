@@ -8,7 +8,8 @@ import {
   type DestructibleTileSetup,
   type MatchState,
   type NeutralAtomSetup,
-  type Position
+  type Position,
+  type Ruleset
 } from './atoms-match-rules';
 
 const BOARD_SETUP_STORAGE_KEY = 'atoms.boardSetups.v1';
@@ -58,6 +59,7 @@ type CreateBlankBoardSetupOptions = {
 
 type CreateMatchFromBoardSetupOptions = {
   playerCount: number;
+  ruleset?: Ruleset;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -122,7 +124,7 @@ export const createBoardSetupFromPreset = (
 
 export const createMatchFromBoardSetup = (
   setup: BoardSetup,
-  { playerCount }: CreateMatchFromBoardSetupOptions
+  { playerCount, ruleset }: CreateMatchFromBoardSetupOptions
 ): MatchState =>
   createMatch({
     columns: setup.columns,
@@ -130,7 +132,8 @@ export const createMatchFromBoardSetup = (
     holes: setup.holes,
     neutralAtoms: setup.neutralAtoms,
     playerCount,
-    rows: setup.rows
+    rows: setup.rows,
+    ruleset
   });
 
 export const createBoardSetupPreviewMatch = (
@@ -154,6 +157,10 @@ export const createBoardSetupPreviewMatch = (
       hasTakenTurn: false
     })),
     rows: setup.rows,
+    ruleset: 'classic',
+    shieldCharges: Object.fromEntries(
+      PLAYER_DEFINITIONS.slice(0, playerCount).map(player => [player.id, 0])
+    ),
     status: 'playing',
     turnNumber: 0,
     winnerId: null

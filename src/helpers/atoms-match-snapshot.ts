@@ -3,15 +3,19 @@ import {
   getCell,
   getPlayablePositions,
   getTile,
+  indexToPosition,
   isDestructibleTile,
   isHole,
+  positionKey,
   validateBoardTopology,
   type BoardCell,
   type DestructibleTileSetup,
   type MatchState,
   type MatchStatus,
   type Player,
-  type PlayerId
+  type PlayerId,
+  type Position,
+  type Ruleset
 } from './atoms-match-rules';
 import { type GameMode } from './atoms-mode';
 
@@ -24,6 +28,8 @@ export type MatchSnapshot = {
   board: string[];
   destructibleTiles?: DestructibleTileSetup[];
   players: SnapshotPlayer[];
+  shieldCharges?: Record<string, number>;
+  shields?: Position[];
   status: MatchStatus;
   turnNumber: number;
   winner: string | null;
@@ -33,7 +39,8 @@ export type AtomsSnapshot = {
   match: MatchSnapshot;
   mode: GameMode;
   presetIndex: number | null;
-  version: 2 | 3;
+  ruleset: Ruleset;
+  version: 4;
 };
 
 export type ParseSnapshotResult =
@@ -48,8 +55,9 @@ type SerializeMatchSnapshotInput = {
 
 const GAME_MODES = new Set<GameMode>(['local', 'npc', 'npc-vs-npc']);
 const MATCH_STATUSES = new Set<MatchStatus>(['playing', 'stalemate', 'won']);
+const RULESETS = new Set<Ruleset>(['classic', 'shielded']);
 const CELL_TOKEN_LENGTH = 2;
-const SNAPSHOT_VERSIONS = new Set([1, 2, 3]);
+const SNAPSHOT_VERSIONS = new Set([1, 2, 3, 4]);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -113,15 +121,38 @@ const getDestructibleTiles = (match: MatchState): DestructibleTileSetup[] => {
       continue;
     }
 
-    const position = {
-      column: index % match.columns,
-      row: Math.floor(index / match.columns)
-    };
+    const position = indexToPosition(match, index);
     destructibleTiles.push({ ...position, hitPoints: cell.hitPoints });
   }
 
   return destructibleTiles;
 };
+
+const getShieldedTiles = (match: MatchState): Position[] => {
+  const shields: Position[] = [];
+
+  for (let index = 0; index < match.cells.length; index += 1) {
+    const cell = match.cells[index]!;
+    if (isHole(cell) || !cell.shielded) {
+      continue;
+    }
+
+    shields.push(indexToPosition(match, index));
+  }
+
+  return shields;
+};
+
+const getSnapshotShieldCharges = (
+  match: MatchState,
+  tokenByPlayerId: Map<PlayerId, string>
+) =>
+  Object.fromEntries(
+    match.players.map(player => [
+      tokenByPlayerId.get(player.id)!,
+      match.shieldCharges[player.id] ?? 0
+    ])
+  );
 
 export const serializeMatchSnapshot = ({
   match,
@@ -131,6 +162,7 @@ export const serializeMatchSnapshot = ({
   const players = getSnapshotPlayers(match);
   const tokenByPlayerId = getTokenByPlayerId(players);
   const destructibleTiles = getDestructibleTiles(match);
+  const shields = getShieldedTiles(match);
 
   return {
     match: {
@@ -138,6 +170,12 @@ export const serializeMatchSnapshot = ({
       board: formatBoardRows(match, tokenByPlayerId),
       ...(destructibleTiles.length > 0 ? { destructibleTiles } : {}),
       players,
+      ...(match.ruleset === 'shielded'
+        ? {
+            shieldCharges: getSnapshotShieldCharges(match, tokenByPlayerId),
+            ...(shields.length > 0 ? { shields } : {})
+          }
+        : {}),
       status: match.status,
       turnNumber: match.turnNumber,
       winner: match.winnerId
@@ -146,7 +184,8 @@ export const serializeMatchSnapshot = ({
     },
     mode,
     presetIndex,
-    version: destructibleTiles.length > 0 ? 3 : 2
+    ruleset: match.ruleset,
+    version: 4
   };
 };
 
@@ -278,10 +317,10 @@ const parseBoard = (
       const [playerToken, atomCountToken] = token;
       const atomCount = Number(atomCountToken);
       if (playerToken === 'N') {
-        if (version !== 2) {
+        if (version < 2) {
           addError(
             errors,
-            'Neutral Atom board tokens require snapshot version 2.'
+            'Neutral Atom board tokens require snapshot version 2 or newer.'
           );
           continue;
         }
@@ -395,6 +434,114 @@ const parseDestructibleTiles = (
   return destructibleTiles;
 };
 
+const parseShieldCharges = (
+  value: unknown,
+  playersByToken: Map<string, SnapshotPlayer>,
+  errors: string[]
+): Partial<Record<PlayerId, number>> => {
+  if (!isRecord(value)) {
+    addError(errors, 'match.shieldCharges must be an object.');
+    return {};
+  }
+
+  const shieldCharges: Partial<Record<PlayerId, number>> = {};
+
+  for (const player of playersByToken.values()) {
+    const charge = value[player.token];
+    if (
+      !Number.isInteger(charge) ||
+      (charge as number) < 0 ||
+      (charge as number) > 2
+    ) {
+      addError(
+        errors,
+        `match.shieldCharges.${player.token} must be an integer from 0 to 2.`
+      );
+      continue;
+    }
+    shieldCharges[player.id] = charge as number;
+  }
+
+  for (const token of Object.keys(value)) {
+    if (!playersByToken.has(token)) {
+      addError(
+        errors,
+        `match.shieldCharges contains unknown player token ${token}.`
+      );
+    }
+  }
+
+  return shieldCharges;
+};
+
+const parseShields = (
+  value: unknown,
+  board: Pick<MatchState, 'cells' | 'columns' | 'rows'>,
+  errors: string[]
+): Position[] => {
+  if (value === undefined) {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    addError(errors, 'match.shields must be an array.');
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const shields: Position[] = [];
+
+  for (const [index, entry] of value.entries()) {
+    if (!isRecord(entry)) {
+      addError(errors, `match.shields[${index}] must be an object.`);
+      continue;
+    }
+
+    const { column, row } = entry;
+    if (!Number.isInteger(column) || !Number.isInteger(row)) {
+      addError(errors, `Invalid Shield metadata at index ${index}.`);
+      continue;
+    }
+
+    const position = { column: column as number, row: row as number };
+    if (
+      position.row < 0 ||
+      position.row >= board.rows ||
+      position.column < 0 ||
+      position.column >= board.columns
+    ) {
+      addError(
+        errors,
+        `Shield at ${position.row},${position.column} is out of bounds.`
+      );
+      continue;
+    }
+
+    const key = positionKey(position);
+    if (seen.has(key)) {
+      addError(
+        errors,
+        `Duplicate Shield at ${position.row},${position.column}.`
+      );
+      continue;
+    }
+    seen.add(key);
+
+    const cell = board.cells[position.row * board.columns + position.column]!;
+    if (isHole(cell) || !cell.ownerId || cell.atomCount < 1) {
+      addError(
+        errors,
+        `Shield at ${position.row},${position.column} must be on a Player-owned Tile.`
+      );
+      continue;
+    }
+
+    shields.push(position);
+  }
+
+  return shields;
+};
+
 const hasCriticalTile = (match: MatchState) =>
   getPlayablePositions(match).some(
     position =>
@@ -412,7 +559,22 @@ export const parseMatchSnapshot = (input: unknown): ParseSnapshotResult => {
     typeof input.version !== 'number' ||
     !SNAPSHOT_VERSIONS.has(input.version)
   ) {
-    addError(errors, 'Snapshot version must be 1, 2, or 3.');
+    addError(errors, 'Snapshot version must be 1, 2, 3, or 4.');
+  }
+
+  const version = input.version as number;
+  const ruleset =
+    version < 4
+      ? 'classic'
+      : typeof input.ruleset === 'string' &&
+          RULESETS.has(input.ruleset as Ruleset)
+        ? (input.ruleset as Ruleset)
+        : null;
+  if (!ruleset) {
+    addError(
+      errors,
+      'ruleset must be classic or shielded for version 4 snapshots.'
+    );
   }
 
   if (
@@ -473,18 +635,28 @@ export const parseMatchSnapshot = (input: unknown): ParseSnapshotResult => {
     addError(errors, 'match.turnNumber must be a non-negative integer.');
   }
 
-  const board = parseBoard(
-    input.match.board,
-    playersByToken,
-    input.version as number,
-    errors
-  );
+  const board = parseBoard(input.match.board, playersByToken, version, errors);
   if (errors.length > 0 || !board || !activePlayer) {
     return { errors, ok: false };
   }
 
-  if (input.match.destructibleTiles !== undefined && input.version !== 3) {
-    addError(errors, 'Destructible Tile metadata requires snapshot version 3.');
+  if (input.match.destructibleTiles !== undefined && version < 3) {
+    addError(
+      errors,
+      'Destructible Tile metadata requires snapshot version 3 or newer.'
+    );
+  }
+
+  if (
+    ruleset === 'classic' &&
+    (input.match.shields !== undefined ||
+      input.match.shieldCharges !== undefined)
+  ) {
+    addError(errors, 'Shield metadata requires the shielded ruleset.');
+  }
+
+  if (ruleset === 'shielded' && input.match.shieldCharges === undefined) {
+    addError(errors, 'Shielded snapshots require match.shieldCharges.');
   }
 
   const destructibleTiles = parseDestructibleTiles(
@@ -492,6 +664,18 @@ export const parseMatchSnapshot = (input: unknown): ParseSnapshotResult => {
     board,
     errors
   );
+  if (errors.length > 0) {
+    return { errors, ok: false };
+  }
+
+  const shieldCharges =
+    ruleset === 'shielded'
+      ? parseShieldCharges(input.match.shieldCharges, playersByToken, errors)
+      : Object.fromEntries(players.map(player => [player.id, 0]));
+  const shields =
+    ruleset === 'shielded'
+      ? parseShields(input.match.shields, board, errors)
+      : [];
   if (errors.length > 0) {
     return { errors, ok: false };
   }
@@ -512,10 +696,17 @@ export const parseMatchSnapshot = (input: unknown): ParseSnapshotResult => {
     columns: board.columns,
     players: players.map(({ token: _token, ...player }) => player),
     rows: board.rows,
+    ruleset: ruleset ?? 'classic',
+    shieldCharges,
     status: input.match.status as MatchStatus,
     turnNumber: input.match.turnNumber as number,
     winnerId: winner ? winner.id : null
   };
+
+  for (const shield of shields) {
+    const cell = getTile(match, shield);
+    cell.shielded = true;
+  }
 
   try {
     validateBoardTopology(match);
