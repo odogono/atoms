@@ -1148,7 +1148,13 @@ export const Main = ({
         type: 'attempt-action'
       });
     },
-    [activeMatchActionTool, dispatch, dispatchShieldAction, handleGolfStroke, playKind]
+    [
+      activeMatchActionTool,
+      dispatch,
+      dispatchShieldAction,
+      handleGolfStroke,
+      playKind
+    ]
   );
 
   const handleTileHover = useCallback(
