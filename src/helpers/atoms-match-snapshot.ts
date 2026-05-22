@@ -306,7 +306,12 @@ const parseBoard = (
 
     for (const token of tokens) {
       if (token === '[]') {
-        cells.push({ atomCount: 0, kind: 'tile', ownerId: null });
+        cells.push({
+          atomCount: 0,
+          kind: 'tile',
+          ownerId: null,
+          shielded: false
+        });
         continue;
       }
       if (token === '..') {
@@ -330,7 +335,7 @@ const parseBoard = (
           continue;
         }
 
-        cells.push({ atomCount, kind: 'tile', ownerId: null });
+        cells.push({ atomCount, kind: 'tile', ownerId: null, shielded: false });
         continue;
       }
 
@@ -341,7 +346,12 @@ const parseBoard = (
         continue;
       }
 
-      cells.push({ atomCount, kind: 'tile', ownerId: player.id });
+      cells.push({
+        atomCount,
+        kind: 'tile',
+        ownerId: player.id,
+        shielded: false
+      });
     }
   }
 

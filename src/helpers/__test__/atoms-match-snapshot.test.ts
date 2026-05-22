@@ -80,7 +80,8 @@ describe('atoms match snapshots', () => {
       expect(getCell(parsed.match, { column: 1, row: 2 })).toEqual({
         atomCount: 1,
         kind: 'tile',
-        ownerId: null
+        ownerId: null,
+        shielded: false
       });
     }
   });
@@ -122,7 +123,8 @@ describe('atoms match snapshots', () => {
         atomCount: 1,
         hitPoints: 2,
         kind: 'tile',
-        ownerId: 'player-1'
+        ownerId: 'player-1',
+        shielded: false
       });
     }
   });

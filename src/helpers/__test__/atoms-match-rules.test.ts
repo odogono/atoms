@@ -64,7 +64,8 @@ describe('atoms match rules', () => {
     expect(getTile(result.state, { column: 1, row: 0 })).toEqual({
       atomCount: 0,
       kind: 'tile',
-      ownerId: null
+      ownerId: null,
+      shielded: false
     });
   });
 
@@ -107,7 +108,8 @@ describe('atoms match rules', () => {
       atomCount: 1,
       hitPoints: 2,
       kind: 'tile',
-      ownerId: 'player-1'
+      ownerId: 'player-1',
+      shielded: false
     });
   });
 
@@ -130,7 +132,8 @@ describe('atoms match rules', () => {
       atomCount: 2,
       hitPoints: 1,
       kind: 'tile',
-      ownerId: 'player-1'
+      ownerId: 'player-1',
+      shielded: false
     });
   });
 
@@ -165,7 +168,8 @@ describe('atoms match rules', () => {
       atomCount: 0,
       hitPoints: 1,
       kind: 'tile',
-      ownerId: null
+      ownerId: null,
+      shielded: false
     });
   });
 
@@ -233,7 +237,8 @@ describe('atoms match rules', () => {
     expect(getTile(match, { column: 1, row: 0 })).toEqual({
       atomCount: 1,
       kind: 'tile',
-      ownerId: null
+      ownerId: null,
+      shielded: false
     });
     expect(isLegalPlacement(match, { column: 1, row: 0 })).toBe(false);
     expect(getLegalPlacements(match)).not.toContainEqual({
@@ -257,7 +262,8 @@ describe('atoms match rules', () => {
     expect(getTile(result.state, { column: 1, row: 0 })).toEqual({
       atomCount: 2,
       kind: 'tile',
-      ownerId: 'player-1'
+      ownerId: 'player-1',
+      shielded: false
     });
   });
 
@@ -301,7 +307,8 @@ describe('atoms match rules', () => {
     expect(getTile(result.state, { column: 1, row: 0 })).toEqual({
       atomCount: 2,
       kind: 'tile',
-      ownerId: 'player-1'
+      ownerId: 'player-1',
+      shielded: false
     });
   });
 
@@ -317,12 +324,14 @@ describe('atoms match rules', () => {
     expect(getTile(result.state, { column: 0, row: 0 })).toEqual({
       atomCount: 1,
       kind: 'tile',
-      ownerId: 'player-1'
+      ownerId: 'player-1',
+      shielded: false
     });
     expect(getTile(result.state, { column: 1, row: 0 })).toEqual({
       atomCount: 0,
       kind: 'tile',
-      ownerId: null
+      ownerId: null,
+      shielded: false
     });
   });
 
@@ -423,7 +432,8 @@ describe('atoms match rules', () => {
     expect(getTile(result.state, { column: 2, row: 2 })).toEqual({
       atomCount: 1,
       kind: 'tile',
-      ownerId: null
+      ownerId: null,
+      shielded: false
     });
   });
 
@@ -522,7 +532,8 @@ describe('atoms match rules', () => {
     expect(getTile(result.state, { column: 0, row: 0 })).toEqual({
       atomCount: 1,
       kind: 'tile',
-      ownerId: 'player-1'
+      ownerId: 'player-1',
+      shielded: false
     });
   });
 
@@ -583,7 +594,8 @@ describe('atoms match rules', () => {
     expect(getTile(result.state, { column: 1, row: 1 })).toEqual({
       atomCount: 1,
       kind: 'tile',
-      ownerId: 'player-1'
+      ownerId: 'player-1',
+      shielded: false
     });
   });
 
@@ -605,7 +617,8 @@ describe('atoms match rules', () => {
     expect(getTile(result.timeline[1]!, { column: 0, row: 0 })).toEqual({
       atomCount: 0,
       kind: 'tile',
-      ownerId: null
+      ownerId: null,
+      shielded: false
     });
   });
 
@@ -633,7 +646,8 @@ describe('atoms match rules', () => {
       atomCount: 1,
       hitPoints: 2,
       kind: 'tile',
-      ownerId: 'player-1'
+      ownerId: 'player-1',
+      shielded: false
     });
   });
 

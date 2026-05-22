@@ -145,7 +145,8 @@ export const createBoardSetupPreviewMatch = (
   const cells: BoardCell[] = Array.from({ length: cellCount }, () => ({
     atomCount: 0,
     kind: 'tile',
-    ownerId: null
+    ownerId: null,
+    shielded: false
   }));
   const preview: MatchState = {
     activePlayerId: PLAYER_DEFINITIONS[0]!.id,

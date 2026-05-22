@@ -49,7 +49,8 @@ describe('atoms match flow', () => {
     expect(getTile(started.state.match, { column: 0, row: 0 })).toEqual({
       atomCount: 2,
       kind: 'tile',
-      ownerId: 'player-1'
+      ownerId: 'player-1',
+      shielded: false
     });
     expect(started.effects).toEqual([
       {
@@ -85,7 +86,8 @@ describe('atoms match flow', () => {
     expect(getTile(finished.state.match, { column: 0, row: 0 })).toEqual({
       atomCount: 0,
       kind: 'tile',
-      ownerId: null
+      ownerId: null,
+      shielded: false
     });
     expect(finished.effects).toEqual([]);
   });

@@ -181,7 +181,8 @@ describe('atoms board setup', () => {
       atomCount: 1,
       hitPoints: 2,
       kind: 'tile',
-      ownerId: null
+      ownerId: null,
+      shielded: false
     });
   });
 

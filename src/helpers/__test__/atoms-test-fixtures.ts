@@ -24,7 +24,8 @@ export const seedBoard = (match: MatchState, tiles: SeedTile[]) => {
       atomCount: tile.count,
       ...(tile.hitPoints ? { hitPoints: tile.hitPoints } : {}),
       kind: 'tile',
-      ownerId: tile.ownerId
+      ownerId: tile.ownerId,
+      shielded: false
     };
   }
 

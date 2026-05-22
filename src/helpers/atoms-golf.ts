@@ -95,7 +95,8 @@ const createGolfMatch = ({
     next.cells[tile.row * next.columns + tile.column] = {
       atomCount: tile.count,
       kind: 'tile',
-      ownerId: tile.ownerId
+      ownerId: tile.ownerId,
+      shielded: false
     };
   }
 

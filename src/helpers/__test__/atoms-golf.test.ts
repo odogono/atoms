@@ -43,7 +43,8 @@ const seedGolfMatch = (
         ? {
             atomCount: tile.count,
             kind: 'tile' as const,
-            ownerId: tile.ownerId
+            ownerId: tile.ownerId,
+            shielded: false
           }
         : cell;
     }),
