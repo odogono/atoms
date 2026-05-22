@@ -6,13 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-05-22
+
 ### Added
 
 - Added Destructible Tiles with Hit Points, destruction into Holes, recursive Collapse, snapshot v3 metadata, a 6x6 Destructible preset, and board HP rendering.
+- Added GitHub Pages deployment via GitHub Actions, including `/atoms/` project-site routing, static `404.html` fallback support, and deployment documentation.
 
 ### Changed
 
 - Softened the board camera so Tile focus drifts subtly instead of fully recentering, and disables Tile-following drift for reduced-motion users.
+- Removed the unused sample Bun API routes so the app can be deployed as a static GitHub Pages site without implying server-side API support.
 
 ## [0.4.2] - 2026-05-21
 

@@ -13,6 +13,11 @@ import './index.css';
 
 import { ThemeProvider } from '@contexts/theme/provider';
 import {
+  getAppRoute,
+  getAppRoutePath,
+  type AppRoute
+} from '@helpers/atoms-app-route';
+import {
   loadStoredBoardSetups,
   saveStoredBoardSetups,
   type BoardSetup
@@ -21,10 +26,10 @@ import {
 import { BoardSetupsScreen } from './screens/board-setups';
 import { Main } from './screens/main';
 
-type AppRoute = 'match' | 'setups';
+const basePath = process.env.BUN_PUBLIC_BASE_PATH;
 
 const getRoute = (): AppRoute =>
-  window.location.pathname === '/setups' ? 'setups' : 'match';
+  getAppRoute(window.location.pathname, basePath);
 
 const App = () => {
   const [route, setRoute] = useState<AppRoute>(() => getRoute());
@@ -51,7 +56,7 @@ const App = () => {
   }, []);
 
   const navigate = useCallback((nextRoute: AppRoute) => {
-    const path = nextRoute === 'setups' ? '/setups' : '/';
+    const path = getAppRoutePath(nextRoute, basePath);
     window.history.pushState(null, '', path);
     setRoute(nextRoute);
   }, []);

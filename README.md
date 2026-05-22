@@ -20,4 +20,14 @@ To run for production:
 bun start
 ```
 
+To deploy to GitHub Pages:
+
+1. In the repository settings, set Pages source to GitHub Actions.
+2. Push to `main`, or run the "Deploy GitHub Pages" workflow manually.
+3. The app is published as a static project site at
+   `https://<owner>.github.io/atoms/`.
+
+GitHub Pages hosts only the static React app from `dist`. It does not run the
+Bun server or expose server-side API routes.
+
 This project was created using `bun init` in bun v1.3.0. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
